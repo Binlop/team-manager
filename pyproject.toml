@@ -1,0 +1,23 @@
+[project]
+name = "team-manager"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
+    "asyncpg>=0.32.0",
+    "fastapi[standard]>=0.162.0",
+    "passlib>=1.7.4",
+    "python-jose>=3.5.0",
+    "redis>=8.1.0",
+    "sqlalchemy[asyncio]>=2.1.8",
+    "structlog>=26.1.0",
+]
+
+[tool.pyright]
+extraPaths = ["src", "src/apps"]
+
+[tool.mypy]
+mypy_path = "src:src/apps"
