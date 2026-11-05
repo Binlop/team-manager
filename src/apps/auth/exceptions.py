@@ -39,6 +39,5 @@ class UserAlreadyDeletedError(DomainError):
         self.user_id = user_id
         super().__init__(f"User {user_id} already deleted")
 
-
 class UserNotFoundError(NotFoundError):
     model_name = "User"
