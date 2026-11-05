@@ -6,7 +6,7 @@ from db.session import Base
 
 
 if TYPE_CHECKING:
-    from teams.models import Team
+    from teams.models import Team, TeamMember
 
 class User(Base):
     __tablename__ = "user"
@@ -20,8 +20,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     is_superuser: Mapped[bool] = mapped_column(default=False)
 
-    managed_teams: Mapped[list["Team"]] = relationship(back_populates="manager")
-    team_memberships: Mapped[list["Team"]] = relationship(back_populates="user")
+    managed_teams: Mapped[list["Team"]] = relationship(back_populates="manager", foreign_keys="Team.manager_id")
+    team_memberships: Mapped[list["TeamMember"]] = relationship(back_populates="user")
 
 class Token(Base):
     __tablename__ = "refresh_token"

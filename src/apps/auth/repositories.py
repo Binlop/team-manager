@@ -1,4 +1,4 @@
-from sqlalchemy import select, update
+from sqlalchemy import select, update, exists
 from datetime import datetime, timezone
 from passlib.context import CryptContext
 from db.uow import UnitOfWork
@@ -36,6 +36,13 @@ class UserRepository:
     async def get_by_user_id(self, id: int) -> User|None:
         stmt = select(User).where(User.id == id)
         return await self.uow.db.scalar(stmt)
+    
+    async def check_user_exists(self, user_id: int) -> bool:
+        stmt = select(
+            exists().where(User.id == user_id)
+        )
+        result = await self.uow.db.execute(stmt)
+        return result.scalar_one()
 
 
 class TokenRepository:

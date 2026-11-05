@@ -1,6 +1,8 @@
 from typing import Any
 from redis.asyncio import Redis
 import json
+from typing import Annotated
+from fastapi import Depends, Request
 
 class RedisCache:
     def __init__(self, client: Redis, default_ttl: int = 300):
@@ -22,3 +24,7 @@ class RedisCache:
     async def exists(self, key: str) -> bool:
         return bool(await self._client.exists(key))
 
+def get_cache(request: Request) -> RedisCache:
+    return RedisCache(request.app.state.redis)
+
+CacheDep = Annotated[RedisCache, Depends(get_cache)]
