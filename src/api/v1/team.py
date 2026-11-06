@@ -3,7 +3,7 @@ from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, TeamMe
 from teams.deps import TeamServiceDep, TeamRepoDep, TeamMemberServiceDep
 from api.deps import UserDep
 
-router = APIRouter(prefix="/team", tags=["Team"])
+router = APIRouter(prefix="/team", tags=["Teams"])
 
 @router.post("/", response_model=TeamCreate, status_code=status.HTTP_201_CREATED)
 async def create_team(data: TeamCreate, service: TeamServiceDep):
