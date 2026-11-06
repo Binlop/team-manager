@@ -1,3 +1,4 @@
+from datetime import datetime
 from core.exceptions import DomainError, NotFoundError
 
 class TeamNotFoundError(NotFoundError):
@@ -34,3 +35,13 @@ class CannotRemoveManagerError(DomainError):
             f"Cannot remove user {user_id} from team {team_id}: "
             f"team must have at least one manager"
         )
+
+class MeetingNotFoundError(NotFoundError):
+    model_name = "Meeting"
+
+class MeetingTimeConflictError(DomainError):
+    status_code = 409
+    error_code = "meeting_time_conflict"
+
+    def __init__(self, starts_at: datetime, ends_at: datetime):
+        super().__init__(f"The user already has a meeting scheduled during time interval from {starts_at} to {ends_at}")

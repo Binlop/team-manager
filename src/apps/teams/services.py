@@ -1,7 +1,8 @@
-from teams.models import Team, TeamMember, TeamRole
-from teams.repositories import TeamRepository, TeamMemberRepository
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate
-from teams.exceptions import TeamNotFoundError, InviteCodeAlreadyExistsError, TeamMemberNotFoundError, TeamMemberAlreadyExistsError, CannotRemoveManagerError
+from teams.models import Team, TeamMember, TeamRole, Meeting, UserMeeting
+from teams.repositories import TeamRepository, TeamMemberRepository, MeetingRepository
+from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate, MeetingUpdate
+from teams.exceptions import TeamNotFoundError, InviteCodeAlreadyExistsError, TeamMemberNotFoundError, TeamMemberAlreadyExistsError, CannotRemoveManagerError, MeetingNotFoundError
+from teams import exceptions
 from auth.models import User
 from auth.repositories import UserRepository
 from auth.exceptions import UserNotFoundError
@@ -102,3 +103,37 @@ class TeamMemberService:
         is_removed = await self.team_member_repo.remove_member(user_id=user_id, team_id=team_id)
         if not is_removed:
             raise TeamMemberNotFoundError(model_object_id=user_id)
+
+class MeetingService:
+
+    def __init__(
+            self,
+            meeting_repo: MeetingRepository,
+            user_repo: UserRepository,
+    ) -> None:
+        self.meeting_repo = meeting_repo
+        self.user_repo = user_repo
+
+    async def create_meeting(self, data: MeetingCreate, user: User) -> Meeting:
+        created = await self.meeting_repo.create_meeting(data, user.id)
+        user_meeting_new = await self.meeting_repo.add_user_to_meeting(created.id, user.id)
+        meeting = await self.meeting_repo.get_meeting_by_id(created.id, user.id)
+        if meeting is None:
+            raise MeetingNotFoundError(created.id)
+        return meeting
+
+    async def add_user_to_meeting(self, meeting_id: int, participant_id: int, user: User):
+        meeting = await self.meeting_repo.get_meeting_by_id(meeting_id, user.id)
+        if meeting is None:
+            raise MeetingNotFoundError(meeting_id)
+        if meeting.organizer_id != user.id:
+            raise PermissionDeniedError()
+        is_participant_exists = self.user_repo.check_user_exists(participant_id)
+        if not is_participant_exists:
+            raise UserNotFoundError(participant_id)
+        is_meeting_conflict = await self.meeting_repo.check_user_meeting_conflicts(meeting.starts_at, meeting.ends_at, user.id)
+        if is_meeting_conflict:
+            raise exceptions.MeetingTimeConflictError(meeting.starts_at, meeting.ends_at)
+        user_meeting_new = await self.meeting_repo.add_user_to_meeting(meeting.id, participant_id)
+
+        # Дописать получение списка участников встречи и возврат далее на фронт

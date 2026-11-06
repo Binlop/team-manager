@@ -1,8 +1,9 @@
-from sqlalchemy import select, delete, update, exists
+from datetime import datetime
+from sqlalchemy import select, delete, update, exists, or_
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
-from teams.models import Team, TeamMember
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate
+from teams.models import Team, TeamMember, Meeting, UserMeeting
+from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
 
 class TeamRepository:
     def __init__(self, uow: UnitOfWork):
@@ -135,3 +136,71 @@ class TeamMemberRepository:
         )
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()
+
+class MeetingRepository:
+
+    def __init__(self, uow: UnitOfWork) -> None:
+        self.uow = uow
+
+    async def create_meeting(self, data: MeetingCreate, user_id: int) -> Meeting:
+        meeting = Meeting(
+            name = data.name,
+            starts_at = data.starts_at,
+            ends_at = data.ends_at,
+            status = data.status,
+            organizer_id = user_id,
+        )
+        self.uow.db.add(meeting)
+        await self.uow.db.flush()
+        return meeting
+
+    async def add_user_to_meeting(self, meeting_id, user_id: int) -> UserMeeting:
+        user_meeting = UserMeeting(
+            user_id = user_id,
+            meeting_id = meeting_id,
+        )
+        self.uow.db.add(user_meeting)
+        await self.uow.db.flush()
+        return user_meeting
+
+    async def get_meeting_by_id(self, meeting_id: int, user_id: int) -> Meeting | None:
+        stmt = (
+            select(Meeting)
+            .where(
+                Meeting.id == meeting_id,
+                Meeting.participants.any(UserMeeting.user_id == user_id)
+            )
+            .options(
+                joinedload(Meeting.organizer),
+                selectinload(Meeting.participants).joinedload(UserMeeting.user),
+            )
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def get_user_meetings(self, user_id: int) -> list[Meeting]:
+        stmt = (
+            select(Meeting)
+            .where(
+                exists().where(
+                    Meeting.id == UserMeeting.id,
+                    UserMeeting.user_id == user_id,
+                )
+            )
+        )    
+        res = await self.uow.db.execute(stmt)
+        return list(res.scalars().all())
+    
+    async def check_user_meeting_conflicts(self, starts_at: datetime, ends_at: datetime, user_id: int) -> bool:
+        stmt = (
+            select(
+                exists().where(
+                    Meeting.participants.any(
+                        UserMeeting.user_id == user_id
+                    ),
+                    Meeting.starts_at < ends_at,
+                    Meeting.ends_at > starts_at,
+                )
+            )
+        )
+        return bool(await self.uow.db.scalar(stmt))

@@ -6,7 +6,8 @@ from db.session import Base
 
 
 if TYPE_CHECKING:
-    from teams.models import Team, TeamMember
+    from teams.models import Team, TeamMember, Meeting, UserMeeting
+    from tasks.models import Task, Comment
 
 class User(Base):
     __tablename__ = "user"
@@ -22,6 +23,11 @@ class User(Base):
 
     managed_teams: Mapped[list["Team"]] = relationship(back_populates="manager", foreign_keys="Team.manager_id")
     team_memberships: Mapped[list["TeamMember"]] = relationship(back_populates="user")
+    tasks: Mapped[list["Task"]] = relationship(back_populates="assignee")
+    comments: Mapped[list["Comment"]] = relationship(back_populates="author")
+    organized_meetings: Mapped[list["Meeting"]] = relationship(back_populates="organizer")
+    meetings: Mapped[list["Meeting"]] = relationship(back_populates="user")
+
 
 class Token(Base):
     __tablename__ = "refresh_token"
