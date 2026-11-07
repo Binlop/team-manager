@@ -26,7 +26,7 @@ class User(Base):
     tasks: Mapped[list["Task"]] = relationship(back_populates="assignee")
     comments: Mapped[list["Comment"]] = relationship(back_populates="author")
     organized_meetings: Mapped[list["Meeting"]] = relationship(back_populates="organizer")
-    meetings: Mapped[list["Meeting"]] = relationship(back_populates="user")
+    meetings: Mapped[list["UserMeeting"]] = relationship(back_populates="user")
 
 
 class Token(Base):

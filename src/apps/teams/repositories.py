@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import select, delete, update, exists, or_
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
-from teams.models import Team, TeamMember, Meeting, UserMeeting
+from teams.models import Team, TeamMember, Meeting, UserMeeting, MeetingStatus
 from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
 
 class TeamRepository:
@@ -172,7 +172,7 @@ class MeetingRepository:
             )
             .options(
                 joinedload(Meeting.organizer),
-                selectinload(Meeting.participants).joinedload(UserMeeting.user),
+                selectinload(Meeting.users),
             )
         )
         res = await self.uow.db.execute(stmt)
@@ -183,9 +183,14 @@ class MeetingRepository:
             select(Meeting)
             .where(
                 exists().where(
-                    Meeting.id == UserMeeting.id,
+                    Meeting.id == UserMeeting.meeting_id,
                     UserMeeting.user_id == user_id,
+                    Meeting.status == MeetingStatus.SCHEDULED
                 )
+            )
+            .options(
+                joinedload(Meeting.organizer),
+                selectinload(Meeting.users)
             )
         )    
         res = await self.uow.db.execute(stmt)
@@ -204,3 +209,31 @@ class MeetingRepository:
             )
         )
         return bool(await self.uow.db.scalar(stmt))
+
+    async def get_user_meeting(self, user_meeting_id: int) -> UserMeeting | None:
+        stmt = (
+            select(UserMeeting).where(
+                UserMeeting.id == user_meeting_id
+            )
+            .options(
+                joinedload(UserMeeting.user),
+                joinedload(UserMeeting.meeting),
+            )
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+    
+    async def get_user_meetings_in_time(self, starts_at: datetime, ends_at: datetime, user_id: int) -> list[Meeting]:
+        stmt = (
+            select(Meeting).where(
+                Meeting.starts_at < ends_at,
+                Meeting.ends_at > starts_at,
+                Meeting.participants.any(UserMeeting.user_id == user_id)
+            )
+            .options(
+                joinedload(Meeting.organizer),
+                selectinload(Meeting.users),
+            )
+        )
+        res = await self.uow.db.execute(stmt)
+        return list(res.scalars().all())

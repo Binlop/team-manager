@@ -1,12 +1,11 @@
 from typing import Any
+from datetime import datetime
 from sqlalchemy import select, delete, update, exists, or_, func
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
 from teams.models import Team, TeamMember
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate
 from tasks.models import Task, Comment
-from tasks.schemas import TaskCreate, TaskUpdate, CommentCreate, CommentUpdate
-from auth.models import User
+from tasks.schemas import TaskCreate, CommentCreate, CommentUpdate
 
 def _user_has_access_task(user_id: int):
     is_member = (
@@ -107,6 +106,20 @@ class TaskRepository:
         )
         result = await self.uow.db.scalar(stmt)
         return float(result) if result is not None else None
+
+    async def get_user_tasks_in_time(self, starts_at: datetime, ends_at: datetime, user_id: int) -> list[Task]:
+        stmt = (
+            select(Task).where(
+                Task.assignee_id == user_id,
+                Task.due_date >= starts_at,
+                Task.due_date <= ends_at,
+            )
+            .options(
+                joinedload(Task.team),
+            )
+        )
+        res = await self.uow.db.execute(stmt)
+        return list(res.scalars().all())
 
     async def update_task(self, data: dict[str, Any]) -> Task | None:
         stmt = (
