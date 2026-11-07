@@ -39,6 +39,9 @@ class CannotRemoveManagerError(DomainError):
 class MeetingNotFoundError(NotFoundError):
     model_name = "Meeting"
 
+class UserMeetingNotFoundError(NotFoundError):
+    model_name = "UserMeeting"
+
 class MeetingTimeConflictError(DomainError):
     status_code = 409
     error_code = "meeting_time_conflict"

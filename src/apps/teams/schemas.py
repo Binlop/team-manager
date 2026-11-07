@@ -55,9 +55,20 @@ class MeetingBase(BaseModel):
     
 class MeetingRead(MeetingBase):
     id: int
+    organizer: UserRead
+    users: list[UserRead]
 
 class MeetingCreate(MeetingBase):
     pass
 
 class MeetingUpdate(MeetingBase):
     pass
+
+class UserMeetingCreate(BaseModel):
+    meeting_id: int
+    participant_id: int
+
+class UserMeetingRead(BaseModel):
+    id: int
+    user: UserRead
+    meeting: MeetingRead

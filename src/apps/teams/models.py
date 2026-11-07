@@ -57,8 +57,8 @@ class Meeting(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    starts_at: Mapped[datetime] = mapped_column(DateTime)
-    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     organizer_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), index=True)
     status: Mapped[MeetingStatus] = mapped_column(
         Enum(MeetingStatus, name="meeting_status", values_callable=lambda x: [e.value for e in x]), default=MeetingStatus.SCHEDULED
@@ -66,6 +66,10 @@ class Meeting(Base):
     
     organizer: Mapped["User"] = relationship(back_populates="organized_meetings")
     participants: Mapped[list["UserMeeting"]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    users: Mapped[list["User"]] = relationship(
+        secondary="user_meetting",
+        viewonly=True,
+    )
 
 class UserMeeting(Base):
     __tablename__ = "user_meetting"
