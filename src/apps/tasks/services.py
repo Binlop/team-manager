@@ -112,11 +112,11 @@ class CommentService:
             raise PermissionDeniedError()
         updated = await self.comment_repo.update_comment(comment_id, data, user.id)
         if updated is None:
-            raise TaskNotFoundError(comment_id)
+            raise CommentNotFoundError(comment_id)
 
         result = await self.comment_repo.get_comment_by_id(comment_id, user.id)
         if result is None:
-            raise TaskNotFoundError(comment_id)
+            raise CommentNotFoundError(comment_id)
         return result
 
     async def delete_comment(self, comment_id: int, user: User) -> None:
