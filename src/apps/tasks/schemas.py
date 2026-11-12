@@ -9,7 +9,7 @@ class TaskBase(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     due_date: date
     status: TaskStatus = TaskStatus.OPEN
-    score: int | None
+    score: int | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class TaskReadBrief(TaskBase):
@@ -23,7 +23,7 @@ class UserTasks(TaskBase):
 class TaskRead(TaskReadBrief):
     team: TeamReadBrief
     comments: list[CommentReadBrief]
-    score: int | None
+    score: int | None = None
     manager_comment: str | None
 
 class TaskCreate(TaskBase):
@@ -32,7 +32,7 @@ class TaskCreate(TaskBase):
 
 class TaskUpdate(TaskCreate):
     id: int
-    score: int | None
+    score: int | None = None
     manager_comment: str | None
 
 class CommentBase(BaseModel):

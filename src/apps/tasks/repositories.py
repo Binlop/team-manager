@@ -1,5 +1,5 @@
 from typing import Any
-from datetime import datetime
+from datetime import date
 from sqlalchemy import select, delete, update, exists, or_, func
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
@@ -107,7 +107,7 @@ class TaskRepository:
         result = await self.uow.db.scalar(stmt)
         return float(result) if result is not None else None
 
-    async def get_user_tasks_in_time(self, starts_at: datetime, ends_at: datetime, user_id: int) -> list[Task]:
+    async def get_user_tasks_in_time(self, starts_at: date, ends_at: date, user_id: int) -> list[Task]:
         stmt = (
             select(Task).where(
                 Task.assignee_id == user_id,
@@ -117,6 +117,7 @@ class TaskRepository:
             .options(
                 joinedload(Task.team),
             )
+            .order_by(Task.due_date, Task.id)
         )
         res = await self.uow.db.execute(stmt)
         return list(res.scalars().all())
@@ -174,15 +175,19 @@ class CommentRepository:
                 joinedload(Comment.author),
                 joinedload(Comment.task),
             )
+            .order_by(Comment.id)
         )
         res = await self.uow.db.execute(stmt)
         return list(res.scalars().all())
 
-    async def update_comment(self, comment_id: int, data: CommentUpdate) -> Comment | None:
+    async def update_comment(self, comment_id: int, data: CommentUpdate, user_id: int) -> Comment | None:
         stmt = (
-            update(Comment).where(Comment.id == comment_id)
+            update(Comment).where(
+                Comment.id == comment_id,
+                Comment.author_id == user_id
+            )
             .values(
-                description = data.description
+                description = data.description,
             )
             .returning(Comment)
         )

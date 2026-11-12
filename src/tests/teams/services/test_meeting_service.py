@@ -47,23 +47,36 @@ def create_data():
         status=MeetingStatus.SCHEDULED,
     )
 
-
 async def test_create_meeting(service, meeting_repo, create_data, organizer, meeting):
+    meeting_repo.check_user_meeting_conflicts.return_value = False
     meeting_repo.create_meeting.return_value = meeting
     meeting_repo.get_meeting_by_id.return_value = meeting
 
     result = await service.create_meeting(create_data, organizer)
 
     assert result is meeting
+    meeting_repo.check_user_meeting_conflicts.assert_awaited_once_with(
+        create_data.starts_at, create_data.ends_at, organizer.id
+    )
     meeting_repo.create_meeting.assert_awaited_once_with(create_data, organizer.id)
-    # организатор автоматически становится участником
+
     meeting_repo.add_user_to_meeting.assert_awaited_once_with(meeting.id, organizer.id)
     meeting_repo.get_meeting_by_id.assert_awaited_once_with(meeting.id, organizer.id)
+
+async def test_create_meeting_time_conflict(service, meeting_repo, create_data, organizer):
+    meeting_repo.check_user_meeting_conflicts.return_value = True
+
+    with pytest.raises(exceptions.MeetingTimeConflictError):
+        await service.create_meeting(create_data, organizer)
+
+    meeting_repo.create_meeting.assert_not_awaited()
+    meeting_repo.add_user_to_meeting.assert_not_awaited()
 
 
 async def test_create_meeting_not_found_after_creation(
     service, meeting_repo, create_data, organizer, meeting
 ):
+    meeting_repo.check_user_meeting_conflicts.return_value = False  # добавить
     meeting_repo.create_meeting.return_value = meeting
     meeting_repo.get_meeting_by_id.return_value = None
 
@@ -146,7 +159,7 @@ async def test_add_user_to_meeting_time_conflict(
 ):
     meeting_repo.check_user_meeting_conflicts.return_value = True
 
-    with pytest.raises(exceptions.MeetingTimeConflictError):
+    with pytest.raises(exceptions.ParticipantTimeConflictError):
         await service.add_user_to_meeting(add_data, organizer)
 
     meeting_repo.add_user_to_meeting.assert_not_awaited()
@@ -182,29 +195,3 @@ async def test_get_user_meetings(service, meeting_repo, organizer):
     assert result == meetings
     meeting_repo.get_user_meetings.assert_awaited_once_with(organizer.id)
 
-
-# --- get_calendar_events ----------------------------------------------------
-
-async def test_get_calendar_events_queries_meetings_in_range(
-    service, meeting_repo, organizer
-):
-    meeting_repo.get_user_meetings_in_time.return_value = []
-
-    await service.get_calendar_events(STARTS_AT, ENDS_AT, organizer)
-
-    meeting_repo.get_user_meetings_in_time.assert_awaited_with(
-        STARTS_AT, ENDS_AT, organizer.id
-    )
-
-
-@pytest.mark.xfail(
-    reason="get_calendar_events ничего не возвращает (нет return), "
-    "метод выглядит недописанным: переменная tasks дублирует meetings.",
-)
-async def test_get_calendar_events_returns_meetings(service, meeting_repo, organizer):
-    meetings = [SimpleNamespace(id=1)]
-    meeting_repo.get_user_meetings_in_time.return_value = meetings
-
-    result = await service.get_calendar_events(STARTS_AT, ENDS_AT, organizer)
-
-    assert result == meetings

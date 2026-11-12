@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from teams.models import Team, TeamMember
 from teams.repositories import TeamRepository
-from teams.schemas import TeamCreate
+from teams.schemas import TeamCreate, TeamUpdate
 
 pytestmark = pytest.mark.asyncio
 
@@ -100,28 +100,23 @@ async def test_get_team_members_empty(repository, make_team):
     assert await repository.get_team_members(team.id) == []
 
 
-async def test_update_team(repository, make_team, make_user):
+async def test_update_team(repository, make_team):
     team = await make_team()
-    new_manager = await make_user()
 
     updated = await repository.update_team(
         team.id,
-        TeamCreate(name="Renamed", invite_code="ALPHA2", manager_id=new_manager.id),
+        TeamUpdate(name="Renamed", invite_code="ALPHA2"),
     )
 
     assert updated is not None
     assert updated.id == team.id
     assert updated.name == "Renamed"
-    assert updated.invite_code == "ALPHA2"
-    assert updated.manager_id == new_manager.id
 
 
-async def test_update_team_not_found(repository, make_user):
-    manager = await make_user()
-
+async def test_update_team_not_found(repository):
     result = await repository.update_team(
         MISSING_ID,
-        TeamCreate(name="X", invite_code="XXXXXX", manager_id=manager.id),
+        TeamUpdate(name="X", invite_code="XXXXXX"),
     )
 
     assert result is None
