@@ -18,7 +18,7 @@ def service(team_repo, user_repo):
 
 @pytest.fixture
 def data(manager):
-    return TeamCreate(name="Alpha", invite_code="ALPHA-1", manager_id=manager.id)
+    return TeamCreate(name="Alpha", invite_code="ALPHA1", manager_id=manager.id)
 
 
 # --- get_team_members -------------------------------------------------------
@@ -71,7 +71,7 @@ async def test_create_team_manager_not_found(service, team_repo, user_repo, data
 # --- update_team ------------------------------------------------------------
 
 async def test_update_team(service, team_repo, user_repo, data, manager, team):
-    updated = SimpleNamespace(id=team.id, name="Alpha")
+    updated = SimpleNamespace(id=team.id, name="Alpha2")
     team_repo.get_team_by_id.return_value = team
     user_repo.get_by_user_id.return_value = manager
     team_repo.update_team.return_value = updated

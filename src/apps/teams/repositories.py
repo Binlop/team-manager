@@ -3,7 +3,7 @@ from sqlalchemy import select, delete, update, exists, or_
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
 from teams.models import Team, TeamMember, Meeting, UserMeeting, MeetingStatus
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
+from teams.schemas import TeamCreate, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
 
 class TeamRepository:
     def __init__(self, uow: UnitOfWork):
@@ -53,16 +53,26 @@ class TeamRepository:
         res = await self.uow.db.execute(stmt)
         return list(res.scalars().all())
 
-    async def update_team(self, team_id: int, team: TeamCreate) -> Team | None:
+    async def update_team(self, team_id: int, team: TeamUpdate) -> Team | None:
         stmt = (
             update(Team)
             .where(Team.id == team_id)
             .values(
                 name=team.name,
                 invite_code=team.invite_code,
-                manager_id=team.manager_id,
             )
             .returning(Team)
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+    
+    async def update_team_manager(self, team_id: int, manager_id: int) -> Team | None:
+        stmt = (
+            update(Team)
+            .where(Team.id == team_id)
+            .values(
+                manager_id=manager_id,
+            ).returning(Team)
         )
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, status
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, TeamRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
+from teams.schemas import TeamCreate, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, TeamRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
 from teams.deps import TeamServiceDep, TeamRepoDep, TeamMemberServiceDep, MeetingServiceDep, MeetingRepoDep
 from api.deps import UserDep
 
@@ -22,7 +22,7 @@ async def get_team_members(team_id: int, service: TeamServiceDep):
 @team_router.put("/{team_id}", response_model=TeamCreate, status_code=status.HTTP_200_OK)
 async def update_team(
     team_id: int, 
-    data: TeamCreate, 
+    data: TeamUpdate, 
     service: TeamServiceDep,
     user: UserDep
 ):

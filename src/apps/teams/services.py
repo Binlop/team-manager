@@ -1,7 +1,7 @@
 from datetime import datetime
 from teams.models import Team, TeamMember, TeamRole, Meeting, UserMeeting
 from teams.repositories import TeamRepository, TeamMemberRepository, MeetingRepository
-from teams.schemas import TeamCreate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate, MeetingUpdate, UserMeetingCreate
+from teams.schemas import TeamCreate, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate, MeetingUpdate, UserMeetingCreate
 from teams.exceptions import TeamNotFoundError, InviteCodeAlreadyExistsError, TeamMemberNotFoundError, TeamMemberAlreadyExistsError, CannotRemoveManagerError, MeetingNotFoundError
 from teams import exceptions
 from auth.models import User
@@ -32,15 +32,15 @@ class TeamService:
             raise UserNotFoundError(model_object_id=data.manager_id)
         return await self.team_repo.create_team(data)
 
-    async def update_team(self, team_id: int, data: TeamCreate, manager_id: User) -> Team | None:
+    async def update_team(self, team_id: int, data: TeamUpdate, manager: User) -> Team | None:
         team = await self.team_repo.get_team_by_id(team_id)
         if team is None:
             raise TeamNotFoundError(model_object_id=team_id)
-        new_manager = await self.user_repo.get_by_user_id(data.manager_id)
-        if new_manager is None:
-            raise UserNotFoundError(model_object_id=data.manager_id)
-        if team.manager_id != manager_id.id:
+        if team.manager_id != manager.id:
             raise PermissionDeniedError()
+        if data.invite_code != team.invite_code:
+            if await self.team_repo.get_team_by_invite_code(data.invite_code):
+                raise InviteCodeAlreadyExistsError(invite_code=data.invite_code)
         team = await self.team_repo.update_team(team_id=team_id, team=data)
         return team
 
@@ -81,13 +81,19 @@ class TeamMemberService:
         updated = await self.team_member_repo.update_member_role(member=data)
         if updated is None:
             raise TeamMemberNotFoundError(model_object_id=data.id)
-        if updated.role == 'manager' and updated.id != manager.id:
+        if updated.role == TeamRole.MEMBER and updated.user_id == manager.id:
+            raise exceptions.CannotDemoteManagerError()
+        
+        if updated.role == TeamRole.MANAGER and updated.user_id != manager.id:
             previous_manager = await self.team_member_repo.get_member_by_team_and_user_id(team_id=updated.team_id, user_id=manager.id)
             if previous_manager is None:
                 raise TeamMemberNotFoundError(model_object_id=manager.id)
             data_to_update_previous_manager = TeamMemberUpdate(id=previous_manager.id, team_id=updated.team_id, role=TeamRole.MEMBER)
             await self.team_member_repo.update_member_role(member=data_to_update_previous_manager)
+            await self.team_repo.update_team_manager(team_id=data.team_id, manager_id=updated.user_id)
         member = await self.team_member_repo.get_member_by_id(updated.id)
+        if member is None or member.team_id != data.team_id:
+            raise TeamMemberNotFoundError(model_object_id=data.id)
         return member
 
     async def remove_member(self, team_id: int, user_id: int, manager: User):
@@ -99,7 +105,7 @@ class TeamMemberService:
         member = await self.team_member_repo.get_member_by_team_and_user_id(team_id, user_id)
         if member is None:
             raise TeamMemberNotFoundError(user_id)
-        if member.role == 'manager' or member.role == 'admin':
+        if member.role == TeamRole.MANAGER or member.role == TeamRole.ADMIN:
             raise CannotRemoveManagerError(team_id, user_id)
         is_removed = await self.team_member_repo.remove_member(user_id=user_id, team_id=team_id)
         if not is_removed:
@@ -116,6 +122,9 @@ class MeetingService:
         self.user_repo = user_repo
 
     async def create_meeting(self, data: MeetingCreate, user: User) -> Meeting:
+        is_meeting_conflict = await self.meeting_repo.check_user_meeting_conflicts(data.starts_at, data.ends_at, user.id)
+        if is_meeting_conflict:
+            raise exceptions.MeetingTimeConflictError(data.starts_at, data.ends_at) 
         created = await self.meeting_repo.create_meeting(data, user.id)
         user_meeting_new = await self.meeting_repo.add_user_to_meeting(created.id, user.id)
         meeting = await self.meeting_repo.get_meeting_by_id(created.id, user.id)
@@ -129,12 +138,12 @@ class MeetingService:
             raise MeetingNotFoundError(data.meeting_id)
         if meeting.organizer_id != user.id:
             raise PermissionDeniedError()
-        is_participant_exists = self.user_repo.check_user_exists(data.participant_id)
+        is_participant_exists = await self.user_repo.check_user_exists(data.participant_id)
         if not is_participant_exists:
             raise UserNotFoundError(data.participant_id)
-        is_meeting_conflict = await self.meeting_repo.check_user_meeting_conflicts(meeting.starts_at, meeting.ends_at, user.id)
+        is_meeting_conflict = await self.meeting_repo.check_user_meeting_conflicts(meeting.starts_at, meeting.ends_at, data.participant_id)
         if is_meeting_conflict:
-            raise exceptions.MeetingTimeConflictError(meeting.starts_at, meeting.ends_at)
+            raise exceptions.ParticipantTimeConflictError(meeting.starts_at, meeting.ends_at)
         created = await self.meeting_repo.add_user_to_meeting(meeting.id, data.participant_id)
         user_meeting = await self.meeting_repo.get_user_meeting(created.id)
         if user_meeting is None:
