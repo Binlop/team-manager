@@ -36,6 +36,10 @@ class CannotRemoveManagerError(DomainError):
             f"team must have at least one manager"
         )
 
+class CannotDemoteManagerError(DomainError):
+    status_code = 409
+    error_code = "cannot_demote_manager"
+
 class MeetingNotFoundError(NotFoundError):
     model_name = "Meeting"
 
@@ -45,6 +49,13 @@ class UserMeetingNotFoundError(NotFoundError):
 class MeetingTimeConflictError(DomainError):
     status_code = 409
     error_code = "meeting_time_conflict"
+
+    def __init__(self, starts_at: datetime, ends_at: datetime):
+        super().__init__(f"The user already has a meeting scheduled during time interval from {starts_at} to {ends_at}")
+
+class ParticipantTimeConflictError(DomainError):
+    status_code = 409
+    error_code = "participant_time_conflict"
 
     def __init__(self, starts_at: datetime, ends_at: datetime):
         super().__init__(f"The user already has a meeting scheduled during time interval from {starts_at} to {ends_at}")

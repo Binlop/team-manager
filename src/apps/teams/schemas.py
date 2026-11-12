@@ -18,6 +18,9 @@ class TeamReadBrief(TeamBase):
 class TeamCreate(TeamBase):
     manager_id: int
 
+class TeamUpdate(TeamBase):
+    pass
+
 class TeamMemberRead(BaseModel):
     user: UserRead
     team: TeamBase
@@ -28,7 +31,7 @@ class TeamMemberRead(BaseModel):
 class TeamMemberCreate(BaseModel):
     user_id: int
     team_id: int
-    role: TeamRole 
+    role: TeamRole = TeamRole.MEMBER 
 
     model_config = ConfigDict(from_attributes=True)
 

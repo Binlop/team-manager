@@ -196,10 +196,10 @@ async def test_update_member_role_to_manager_previous_manager_not_found(
         await service.update_member_role(data, manager)
 
 
-@pytest.mark.xfail(
-    reason="Баг: если менеджер назначает менеджером самого себя, сервис "
-    "тут же понижает его до MEMBER (обновляет ту же запись второй раз).",
-)
+# @pytest.mark.xfail(
+#     reason="Баг: если менеджер назначает менеджером самого себя, сервис "
+#     "тут же понижает его до MEMBER (обновляет ту же запись второй раз).",
+# )
 async def test_update_member_role_manager_assigning_self_is_not_demoted(
     service, team_repo, team_member_repo, manager, team
 ):
