@@ -81,7 +81,7 @@ class TeamMemberService:
         updated = await self.team_member_repo.update_member_role(member=data)
         if updated is None:
             raise TeamMemberNotFoundError(model_object_id=data.id)
-        if updated.role == 'manager':
+        if updated.role == 'manager' and updated.id != manager.id:
             previous_manager = await self.team_member_repo.get_member_by_team_and_user_id(team_id=updated.team_id, user_id=manager.id)
             if previous_manager is None:
                 raise TeamMemberNotFoundError(model_object_id=manager.id)
