@@ -140,7 +140,7 @@ async def test_update_member_role_member_not_found(
 async def test_update_member_role_to_non_manager_role(
     service, team_repo, team_member_repo, update_data, manager, team, member
 ):
-    fresh = SimpleNamespace(id=member.id, role=TeamRole.MEMBER)
+    fresh = SimpleNamespace(id=member.id, role=TeamRole.MEMBER, team_id=team.id)
     team_repo.get_team_by_id.return_value = team
     team_member_repo.update_member_role.return_value = member  # role = MEMBER
     team_member_repo.get_member_by_id.return_value = fresh
@@ -153,6 +153,16 @@ async def test_update_member_role_to_non_manager_role(
     team_member_repo.get_member_by_team_and_user_id.assert_not_awaited()
     team_member_repo.get_member_by_id.assert_awaited_once_with(member.id)
 
+async def test_update_member_role_member_from_other_team(
+    service, team_repo, team_member_repo, update_data, manager, team, member
+):
+    other_team_member = SimpleNamespace(id=member.id, team_id=team.id + 1, role=TeamRole.MEMBER)
+    team_repo.get_team_by_id.return_value = team
+    team_member_repo.update_member_role.return_value = member
+    team_member_repo.get_member_by_id.return_value = other_team_member
+
+    with pytest.raises(TeamMemberNotFoundError):
+        await service.update_member_role(update_data, manager)
 
 async def test_update_member_role_to_manager_demotes_previous_manager(
     service, team_repo, team_member_repo, manager, team
@@ -162,7 +172,7 @@ async def test_update_member_role_to_manager_demotes_previous_manager(
         id=MEMBER_ID, user_id=USER_ID, team_id=team.id, role=TeamRole.MANAGER
     )
     previous_manager = SimpleNamespace(id=200)
-    fresh = SimpleNamespace(id=MEMBER_ID, role=TeamRole.MANAGER)
+    fresh = SimpleNamespace(id=MEMBER_ID, team_id=team.id, role=TeamRole.MANAGER)
     team_repo.get_team_by_id.return_value = team
     team_member_repo.update_member_role.return_value = promoted
     team_member_repo.get_member_by_team_and_user_id.return_value = previous_manager
@@ -179,7 +189,9 @@ async def test_update_member_role_to_manager_demotes_previous_manager(
     team_member_repo.update_member_role.assert_any_await(
         member=TeamMemberUpdate(id=200, team_id=team.id, role=TeamRole.MEMBER)
     )
-
+    team_repo.update_team_manager.assert_awaited_once_with(
+        team_id=team.id, manager_id=USER_ID
+    )
 
 async def test_update_member_role_to_manager_previous_manager_not_found(
     service, team_repo, team_member_repo, manager, team

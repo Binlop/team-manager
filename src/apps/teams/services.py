@@ -153,7 +153,3 @@ class MeetingService:
     async def get_user_meetings(self, user: User) -> list[Meeting]:
         meetings = await self.meeting_repo.get_user_meetings(user.id)
         return meetings
-
-    async def get_calendar_events(self, starts_at: datetime, ends_at: datetime, user: User):
-        meetings = await self.meeting_repo.get_user_meetings_in_time(starts_at, ends_at, user.id)
-        tasks = await self.meeting_repo.get_user_meetings_in_time(starts_at, ends_at, user.id)

@@ -110,7 +110,7 @@ class CommentService:
             raise CommentNotFoundError(comment_id)
         if comment.author_id != user.id:
             raise PermissionDeniedError()
-        updated = await self.comment_repo.update_comment(comment_id, data)
+        updated = await self.comment_repo.update_comment(comment_id, data, user.id)
         if updated is None:
             raise TaskNotFoundError(comment_id)
 

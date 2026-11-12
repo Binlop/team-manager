@@ -49,4 +49,4 @@ def stranger():
  
 @pytest.fixture
 def team(manager):
-    return SimpleNamespace(id=10, manager_id=manager.id)
+    return SimpleNamespace(id=10, manager_id=manager.id, invite_code="OlCODE")
