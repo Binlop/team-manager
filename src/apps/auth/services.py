@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from core.security import create_access_token, create_refresh_token, verify_token
 from db.uow import UnitOfWork
 from auth.models import User
@@ -8,7 +9,8 @@ from auth.repositories import UserRepository, TokenRepository
 from auth.schemas import UserCreate, UserLogin, TokenResponse, RefreshTokenRequest
 from core.cache import RedisCache
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+ph = PasswordHasher()
 
 class UserService:
 
@@ -38,10 +40,14 @@ class UserService:
             user = await self.user_repository.get_by_email(cmd.identifier)
         else:
             user = await self.user_repository.get_by_username(cmd.identifier)
-        if not user or not pwd_context.verify(secret=cmd.password, hash=user.hashed_password):
+        if not user:
             raise InvalidCredentialsError()
+        try:
+            ph.verify(user.hashed_password, cmd.password)
+        except VerifyMismatchError:
+            raise InvalidCredentialsError()
+        
         data_to_token = {'sub': str(user.id)}
-
         access_token = create_access_token(data_to_token)
         refresh_token, jti, expires_at = create_refresh_token(data_to_token)
         await self.token_repository.save_refresh_token(jti=jti, 

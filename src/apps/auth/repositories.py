@@ -1,11 +1,12 @@
 from sqlalchemy import select, update, exists
 from datetime import datetime, timezone
-from passlib.context import CryptContext
 from db.uow import UnitOfWork
 from auth.models import User, Token
 from auth.schemas import UserCreate
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+ph = PasswordHasher()
 
 class UserRepository:
 
@@ -13,7 +14,7 @@ class UserRepository:
         self.uow = uow
 
     async def create_user(self, data: UserCreate) -> User:
-        hashed = pwd_context.hash(data.password)
+        hashed = ph.hash(data.password)
         user = User(
             email=data.email,
             username=data.username,
