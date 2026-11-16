@@ -25,7 +25,12 @@ class Team(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(150))
-    invite_code: Mapped[str] = mapped_column(String(6), unique=True)
+    # invite_code: Mapped[str] = mapped_column(String(6), unique=True)
+    invite_code: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=False,
+    )
     manager_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
 
     manager: Mapped["User"] = relationship(foreign_keys=[manager_id], back_populates="managed_teams")

@@ -5,7 +5,6 @@ from auth.schemas import UserRead
 
 class TeamBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
-    invite_code: str = Field(..., min_length=6, max_length=6)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -15,11 +14,8 @@ class TeamRead(TeamBase):
 class TeamReadBrief(TeamBase):
     id: int
 
-class TeamCreate(TeamBase):
-    manager_id: int
-
 class TeamUpdate(TeamBase):
-    pass
+    id: int
 
 class TeamMemberRead(BaseModel):
     user: UserRead
@@ -52,7 +48,7 @@ class MeetingBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_meeting_time(self):
-        if self.ends_at < self.starts_at:
+        if self.ends_at <= self.starts_at:
             raise ValueError("Время окончания встречи должно быть позже времени начала")
         return self
     
@@ -65,7 +61,7 @@ class MeetingCreate(MeetingBase):
     pass
 
 class MeetingUpdate(MeetingBase):
-    pass
+    id: int
 
 class UserMeetingCreate(BaseModel):
     meeting_id: int

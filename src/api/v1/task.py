@@ -34,6 +34,13 @@ async def get_team_tasks(team_id: int, service: TaskServiceDep, user: UserDep):
 async def get_task_comments(task_id: int, service: CommentServiceDep, user: UserDep):
     return await service.get_comments_by_task_id(task_id, user)
 
+@task_router.delete('/{task_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: int, 
+    service: TaskServiceDep, 
+    user: UserDep
+):
+    return await service.delete_task(task_id, user)
 
 @comment_router.post('/', response_model=CommentRead, status_code=status.HTTP_201_CREATED)
 async def create_comment(data: CommentCreate, service: CommentServiceDep, user: UserDep):

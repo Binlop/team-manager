@@ -1,25 +1,29 @@
 from fastapi import APIRouter, status
-from teams.schemas import TeamCreate, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, TeamRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
-from teams.deps import TeamServiceDep, TeamRepoDep, TeamMemberServiceDep, MeetingServiceDep, MeetingRepoDep
+from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, TeamRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
+from teams.deps import TeamServiceDep, TeamRepoDep, TeamMemberServiceDep, MeetingServiceDep, TeamServiceDep
 from api.deps import UserDep
 
 
 team_router = APIRouter(prefix="/team", tags=["Teams"])
 meeting_router = APIRouter(prefix="/meeting", tags=["Meeting"])
 
-@team_router.post("/", response_model=TeamCreate, status_code=status.HTTP_201_CREATED)
-async def create_team(data: TeamCreate, service: TeamServiceDep):
-    return await service.create_team(data)
+@team_router.post("/", response_model=TeamBase, status_code=status.HTTP_201_CREATED)
+async def create_team(data: TeamBase, service: TeamServiceDep, user: UserDep):
+    return await service.create_team(data, user)
 
 @team_router.get("/{team_id}", response_model=TeamRead, status_code=status.HTTP_200_OK)
-async def get_team(team_id: int, team_repo: TeamRepoDep):
-    return await team_repo.get_team_by_id(team_id)
+async def get_team(team_id: int, service: TeamServiceDep, user: UserDep):
+    return await service.get_team_or_404(team_id, user)
+
+@team_router.get("/{team_id}/join/{invite_code}", response_model=TeamMemberRead, status_code=status.HTTP_200_OK)
+async def join_team(team_id: int, invite_code: str, service: TeamMemberServiceDep, user: UserDep):
+    return await service.add_member_by_invite_code(invite_code, user)
 
 @team_router.get("/{team_id}/members", response_model=list[TeamMemberRead], status_code=status.HTTP_200_OK)
-async def get_team_members(team_id: int, service: TeamServiceDep):
-    return await service.get_team_members(team_id)
+async def get_team_members(team_id: int, service: TeamServiceDep, user: UserDep):
+    return await service.get_team_members(team_id, user)
 
-@team_router.put("/{team_id}", response_model=TeamCreate, status_code=status.HTTP_200_OK)
+@team_router.put("/{team_id}", response_model=TeamUpdate, status_code=status.HTTP_200_OK)
 async def update_team(
     team_id: int, 
     data: TeamUpdate, 
@@ -27,6 +31,14 @@ async def update_team(
     user: UserDep
 ):
     return await service.update_team(team_id, data, user)
+
+@team_router.put("/{team_id}/refresh-invite-code", status_code=status.HTTP_200_OK)
+async def refresh_team_invite_code(
+    team_id: int, 
+    service: TeamServiceDep,
+    user: UserDep
+):
+    return await service.refresh_invite_code(team_id, user)
 
 @team_router.post("/{team_id}/member", response_model=TeamMemberRead, status_code=status.HTTP_201_CREATED)
 async def add_member(
@@ -66,5 +78,24 @@ async def add_meeting_member(data: UserMeetingCreate, service: MeetingServiceDep
 @meeting_router.get("/my-meetings", response_model=list[MeetingRead], status_code=status.HTTP_200_OK)
 async def get_user_meetings(service: MeetingServiceDep, user: UserDep):
     return await service.get_user_meetings(user)
+
+@meeting_router.put("/{meeting_id}/", response_model=MeetingRead, status_code=status.HTTP_200_OK)
+async def update_meeting(
+    meeting_id: int,
+    data: MeetingUpdate,
+    service: MeetingServiceDep, 
+    user: UserDep
+):
+    return await service.update_meeting(data, user)
+
+@meeting_router.delete("/{meeting_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meeting(
+    meeting_id: int, 
+    service: MeetingServiceDep, 
+    user: UserDep
+):
+    return await service.delete_meeting(meeting_id, user)
+
+
 
 

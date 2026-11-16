@@ -1,7 +1,7 @@
 from core.exceptions import PermissionDeniedError
 from tasks.repositories import TaskRepository, CommentRepository
 from tasks.schemas import TaskCreate, TaskUpdate, CommentCreate, CommentUpdate
-from tasks.models import Task, Comment
+from tasks.models import Task, Comment, TaskStatus
 from tasks.exceptions import AssigneeNotInTeamError, TaskNotFoundError, CommentNotFoundError
 from auth.models import User
 from teams.repositories import TeamRepository, TeamMemberRepository
@@ -40,7 +40,7 @@ class TaskService:
         return payload
 
     async def create_task(self, data: TaskCreate, user: User) -> Task:
-        team = await self.team_repo.get_team_by_id(data.team_id)
+        team = await self.team_repo.get_team_for_user(data.team_id, user.id)
         if team is None:
             raise TeamNotFoundError(data.team_id)
         if team.manager_id != user.id:
@@ -60,11 +60,10 @@ class TaskService:
         if task is None:
             raise TaskNotFoundError(data.id)
         is_manager = task.team.manager_id == user.id
-        if is_manager:
-            payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
-        else:
-            payload = data.model_dump(include={"status"}, exclude_unset=True)
-
+        if not is_manager:
+            raise PermissionDeniedError()
+        
+        payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
         updated = await self.task_repo.update_task({"id": data.id, **payload})
         if updated is None:
             raise TaskNotFoundError(data.id)
@@ -73,6 +72,17 @@ class TaskService:
         if result is None:
             raise TaskNotFoundError(data.id)
         return result
+    
+    async def delete_task(self, task_id: int, user: User):
+        task = await self.task_repo.get_task_by_id(task_id, user.id)
+        if task is None:
+            raise TaskNotFoundError(task_id)
+        if task.assignee_id == user.id or task.team.manager_id == user.id:
+            deleted = self.task_repo.delete_task(task.id)
+            if not deleted:
+                raise TaskNotFoundError(task.id)
+        else:
+            raise PermissionDeniedError()
 
 class CommentService:
 

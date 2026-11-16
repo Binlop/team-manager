@@ -4,6 +4,11 @@ from core.exceptions import DomainError, NotFoundError
 class TeamNotFoundError(NotFoundError):
     model_name = "Team"
 
+class InvalidInviteCodeError(DomainError):
+    status_code = 404
+    error_code = "invalid_invite_code"
+    detail = "Invite code is invalid or expired"
+
 class TeamMemberNotFoundError(NotFoundError):
     model_name = "TeamMember"
 

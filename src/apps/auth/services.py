@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from argon2 import PasswordHasher
+import asyncio
 from argon2.exceptions import VerifyMismatchError
 from core.security import create_access_token, create_refresh_token, verify_token
 from db.uow import UnitOfWork
@@ -42,9 +43,13 @@ class UserService:
             user = await self.user_repository.get_by_username(cmd.identifier)
         if not user:
             raise InvalidCredentialsError()
-        try:
-            ph.verify(user.hashed_password, cmd.password)
-        except VerifyMismatchError:
+        
+        is_valid = await asyncio.to_thread(
+            self.verify_password,
+            user.hashed_password,
+            cmd.password,
+        )
+        if not is_valid:
             raise InvalidCredentialsError()
         
         data_to_token = {'sub': str(user.id)}
@@ -74,7 +79,14 @@ class UserService:
             raise InvalidTokenError()
         jti = payload["jti"]
         await self.token_repository.revoke_token_by_jti(jti=jti)
-        
+
+    @staticmethod
+    def verify_password(hashed_password: str, password: str) -> bool:
+        try:
+            return ph.verify(hashed_password, password)
+        except VerifyMismatchError:
+            return False
+
 class TokenService:
 
     def __init__(self, uow: UnitOfWork):

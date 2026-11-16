@@ -6,9 +6,12 @@ from pydantic import computed_field
 CONFIG_DIR = Path(__file__).resolve().parent
 ENV_FILE = CONFIG_DIR / ".env"
 
+if not ENV_FILE.exists():
+    ENV_FILE = CONFIG_DIR / ".env.example"
+
 class Settings(BaseSettings):
     SECRET_KEY: str = ""
-    DEBUG: bool = True
+    DEBUG: bool = False
     PROJECT_NAME: str = "Analytics API"
     APP_ENV: Literal["prod", "dev", "test"] = "dev"
     PROJECT_NAME: str = "Team Manager API"

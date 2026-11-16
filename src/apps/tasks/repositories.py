@@ -131,7 +131,16 @@ class TaskRepository:
         )
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()
-
+    
+    async def delete_task(self, task_id: int) -> bool:
+        stmt = (
+            delete(Task).where(
+                Task.id == task_id,
+            )
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.rowcount > 0 # pyright: ignore[reportAttributeAccessIssue]
+    
 class CommentRepository:
 
     def __init__(self, uow: UnitOfWork) -> None:

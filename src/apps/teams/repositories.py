@@ -3,23 +3,34 @@ from sqlalchemy import select, delete, update, exists, or_
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
 from teams.models import Team, TeamMember, Meeting, UserMeeting, MeetingStatus
-from teams.schemas import TeamCreate, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
+from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
+
+def is_member(team_id: int, user_id: int):
+    is_member = (
+        exists()
+        .where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == user_id,
+        )
+    )
+    return is_member
+
 
 class TeamRepository:
     def __init__(self, uow: UnitOfWork):
         self.uow = uow
 
-    async def create_team(self, data: TeamCreate) -> Team:
+    async def create_team(self, data: TeamBase, user_id: int, invite_code: str) -> Team:
         team = Team(
             name = data.name,
-            invite_code = data.invite_code,
-            manager_id = data.manager_id,
+            invite_code = invite_code,
+            manager_id = user_id,
         )
         self.uow.db.add(team)
         await self.uow.db.flush()
 
         member = TeamMember(
-            user_id = data.manager_id,
+            user_id = user_id,
             team_id = team.id,
             role = "manager"
         )
@@ -27,11 +38,25 @@ class TeamRepository:
         return team
 
     async def get_team_by_id(self, team_id: int) -> Team | None:
+        """Просто получить команду по id, без проверки доступа."""
         stmt = (
-            select(Team).where(Team.id == team_id)
-            .options(
-                joinedload(Team.manager)
+            select(Team)
+            .where(Team.id == team_id)
+            .options(joinedload(Team.manager))
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+
+
+    async def get_team_for_user(self, team_id: int, user_id: int) -> Team | None:
+        """Получить команду, только если user_id — менеджер или участник."""
+        stmt = (
+            select(Team)
+            .where(
+                Team.id == team_id,
+                or_(Team.manager_id == user_id, is_member(team_id, user_id)),
             )
+            .options(joinedload(Team.manager))
         )
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()
@@ -41,10 +66,14 @@ class TeamRepository:
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def get_team_members(self, team_id: int) -> list[TeamMember]:
+    async def get_team_members(self, team_id: int, user_id: int) -> list[TeamMember]:
         stmt = (
             select(TeamMember)
-            .where(TeamMember.team_id == team_id)
+            .where(
+                TeamMember.team_id == team_id,
+                is_member(team_id, user_id)
+
+            )
             .options(
                 joinedload(TeamMember.user),
                 joinedload(TeamMember.team),
@@ -53,13 +82,27 @@ class TeamRepository:
         res = await self.uow.db.execute(stmt)
         return list(res.scalars().all())
 
-    async def update_team(self, team_id: int, team: TeamUpdate) -> Team | None:
+    async def update_team(self, team_id: int, team: TeamUpdate, user_id: int) -> Team | None:
         stmt = (
             update(Team)
-            .where(Team.id == team_id)
+            .where(
+                Team.id == team_id,
+                Team.manager_id == user_id
+            )
             .values(
                 name=team.name,
-                invite_code=team.invite_code,
+            )
+            .returning(Team)
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+    
+    async def update_invite_code_team(self, team_id: int, invite_code: str, user_id: int) -> Team | None:
+        stmt = (
+            update(Team)
+            .where(Team.id == team_id, Team.manager_id == user_id)
+            .values(
+                invite_code=invite_code,
             )
             .returning(Team)
         )
@@ -247,3 +290,27 @@ class MeetingRepository:
         )
         res = await self.uow.db.execute(stmt)
         return list(res.scalars().all())
+
+    async def update_meeting(self, data: MeetingUpdate) -> Meeting | None:
+        stmt = (
+            update(Meeting)
+            .where(Meeting.id == data.id)
+            .values(
+                name=data.name,
+                starts_at=data.starts_at,
+                ends_at=data.ends_at,
+                status=data.status,
+            )
+            .returning(Meeting)
+        )
+        res = await self.uow.db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def delete_meeting(self, meeting_id: int, user_id: int) -> bool:
+        """Удаляет встречу."""
+        stmt = delete(Meeting).where(
+            Meeting.id == meeting_id,
+            Meeting.organizer_id == user_id,
+        )
+        result = await self.uow.db.execute(stmt)
+        return result.rowcount > 0 # type: ignore
