@@ -362,3 +362,21 @@ async def test_delete_comment_failed(
         comment.id,
         user.id,
     )
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Недочёт: delete_comment возвращает PermissionDeniedError и для "
+        "несуществующего комментария, потому что репозиторий не различает "
+        "«не найден» и «не автор» (rowcount == 0)."
+    ),
+    strict=False,
+)
+async def test_delete_comment_not_found_raises_not_found(
+    service,
+    user,
+):
+    service.comment_repo.delete_comment.return_value = False
+
+    with pytest.raises(CommentNotFoundError):
+        await service.service.delete_comment(100, user)

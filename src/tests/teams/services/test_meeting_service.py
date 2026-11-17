@@ -8,12 +8,13 @@ from core.exceptions import PermissionDeniedError
 from teams import exceptions
 from teams.exceptions import MeetingNotFoundError
 from teams.models import MeetingStatus
-from teams.schemas import MeetingCreate, UserMeetingCreate
+from teams.schemas import MeetingCreate, MeetingUpdate, UserMeetingCreate
 from teams.services import MeetingService
 
 pytestmark = pytest.mark.asyncio
 
 PARTICIPANT_ID = 7
+MISSING_ID = 999_999
 STARTS_AT = datetime(2030, 1, 1, 10, 0)
 ENDS_AT = datetime(2030, 1, 1, 11, 0)
 
@@ -194,4 +195,123 @@ async def test_get_user_meetings(service, meeting_repo, organizer):
 
     assert result == meetings
     meeting_repo.get_user_meetings.assert_awaited_once_with(organizer.id)
+
+
+# --- update_meeting ---------------------------------------------------------
+
+
+@pytest.fixture
+def update_data(meeting):
+    return MeetingUpdate(
+        id=meeting.id,
+        name="Rescheduled",
+        starts_at=STARTS_AT,
+        ends_at=ENDS_AT,
+        status=MeetingStatus.CANCELLED,
+    )
+
+
+async def test_update_meeting(
+    service, meeting_repo, organizer, meeting, update_data
+):
+    updated = SimpleNamespace(id=meeting.id)
+    user_meeting = SimpleNamespace(id=50, user_id=organizer.id, meeting_id=meeting.id)
+    meeting_repo.get_meeting_by_id.side_effect = [meeting, user_meeting]
+    meeting_repo.update_meeting.return_value = updated
+
+    result = await service.update_meeting(update_data, organizer)
+
+    assert result is user_meeting
+    assert meeting_repo.get_meeting_by_id.await_count == 2
+    meeting_repo.get_meeting_by_id.assert_any_await(meeting.id, organizer.id)
+    meeting_repo.update_meeting.assert_awaited_once_with(update_data)
+
+
+async def test_update_meeting_not_found(
+    service, meeting_repo, organizer, update_data
+):
+    meeting_repo.get_meeting_by_id.return_value = None
+
+    with pytest.raises(MeetingNotFoundError):
+        await service.update_meeting(update_data, organizer)
+
+    meeting_repo.update_meeting.assert_not_awaited()
+
+
+async def test_update_meeting_by_non_organizer(
+    service, meeting_repo, stranger, meeting, update_data
+):
+    # stranger видит встречу (например, как участник), но не организатор.
+    meeting_repo.get_meeting_by_id.return_value = meeting
+
+    with pytest.raises(PermissionDeniedError):
+        await service.update_meeting(update_data, stranger)
+
+    meeting_repo.update_meeting.assert_not_awaited()
+
+
+async def test_update_meeting_repository_did_not_update(
+    service, meeting_repo, organizer, meeting, update_data
+):
+    meeting_repo.get_meeting_by_id.return_value = meeting
+    meeting_repo.update_meeting.return_value = None
+
+    with pytest.raises(MeetingNotFoundError):
+        await service.update_meeting(update_data, organizer)
+
+
+async def test_update_meeting_not_found_after_update(
+    service, meeting_repo, organizer, meeting, update_data
+):
+    meeting_repo.get_meeting_by_id.side_effect = [meeting, None]
+    meeting_repo.update_meeting.return_value = SimpleNamespace(id=meeting.id)
+
+    with pytest.raises(exceptions.UserMeetingNotFoundError):
+        await service.update_meeting(update_data, organizer)
+
+
+# --- delete_meeting ---------------------------------------------------------
+
+
+async def test_delete_meeting(service, meeting_repo, organizer, meeting):
+    meeting_repo.get_meeting_by_id.return_value = meeting
+    meeting_repo.delete_meeting.return_value = True
+
+    result = await service.delete_meeting(meeting.id, organizer)
+
+    assert result is None
+    meeting_repo.get_meeting_by_id.assert_awaited_once_with(
+        meeting.id, organizer.id
+    )
+    meeting_repo.delete_meeting.assert_awaited_once_with(meeting.id, organizer.id)
+
+
+async def test_delete_meeting_not_found(service, meeting_repo, organizer):
+    meeting_repo.get_meeting_by_id.return_value = None
+
+    with pytest.raises(MeetingNotFoundError):
+        await service.delete_meeting(MISSING_ID, organizer)
+
+    meeting_repo.delete_meeting.assert_not_awaited()
+
+
+async def test_delete_meeting_by_non_organizer(
+    service, meeting_repo, stranger, meeting
+):
+    meeting_repo.get_meeting_by_id.return_value = meeting
+
+    with pytest.raises(PermissionDeniedError):
+        await service.delete_meeting(meeting.id, stranger)
+
+    meeting_repo.delete_meeting.assert_not_awaited()
+
+
+async def test_delete_meeting_repository_deleted_nothing(
+    service, meeting_repo, organizer, meeting
+):
+    meeting_repo.get_meeting_by_id.return_value = meeting
+    meeting_repo.delete_meeting.return_value = False
+
+    with pytest.raises(MeetingNotFoundError):
+        await service.delete_meeting(meeting.id, organizer)
 

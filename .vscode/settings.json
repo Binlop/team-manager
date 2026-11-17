@@ -1,4 +1,8 @@
 {
   "python.analysis.extraPaths": ["src", "src/apps"],
-  "python.autoComplete.extraPaths": ["src", "src/apps"]
+  "python.autoComplete.extraPaths": [
+    "src",
+    "src/apps"
+  ],
+  "python-envs.defaultEnvManager": "ms-python.python:venv"
 }

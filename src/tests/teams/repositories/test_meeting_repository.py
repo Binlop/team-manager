@@ -2,7 +2,7 @@ import pytest
 
 from teams.models import Meeting, MeetingStatus, UserMeeting
 from teams.repositories import MeetingRepository
-from teams.schemas import MeetingCreate
+from teams.schemas import MeetingCreate, MeetingUpdate
 
 pytestmark = pytest.mark.asyncio
 
@@ -207,3 +207,82 @@ async def test_get_user_meetings_in_time_empty(repository, make_user, at):
     user = await make_user()
 
     assert await repository.get_user_meetings_in_time(at(0), at(1), user.id) == []
+
+
+# --- update_meeting ---------------------------------------------------------
+
+
+async def test_update_meeting(repository, make_user, make_meeting, at, detach):
+    user = await make_user()
+    meeting = await make_meeting(
+        organizer=user, start_h=0, end_h=1, participants=(user,)
+    )
+    meeting_id = meeting.id
+    await detach()
+
+    updated = await repository.update_meeting(
+        MeetingUpdate(
+            id=meeting_id,
+            name="Rescheduled",
+            starts_at=at(2),
+            ends_at=at(3),
+            status=MeetingStatus.CANCELLED,
+        )
+    )
+
+    assert updated is not None
+    assert updated.id == meeting_id
+    assert updated.name == "Rescheduled"
+    assert updated.starts_at == at(2)
+    assert updated.ends_at == at(3)
+    assert updated.status == MeetingStatus.CANCELLED
+
+
+async def test_update_meeting_not_found(repository, at):
+    result = await repository.update_meeting(
+        MeetingUpdate(
+            id=MISSING_ID,
+            name="Ghost",
+            starts_at=at(0),
+            ends_at=at(1),
+            status=MeetingStatus.SCHEDULED,
+        )
+    )
+
+    assert result is None
+
+
+# --- delete_meeting ---------------------------------------------------------
+
+
+async def test_delete_meeting(repository, make_user, make_meeting):
+    organizer = await make_user()
+    meeting = await make_meeting(organizer=organizer, participants=(organizer,))
+
+    deleted = await repository.delete_meeting(meeting.id, organizer.id)
+
+    assert deleted is True
+    assert await repository.get_meeting_by_id(meeting.id, organizer.id) is None
+
+
+async def test_delete_meeting_by_non_organizer(
+    repository, make_user, make_meeting
+):
+    organizer = await make_user()
+    participant = await make_user()
+    meeting = await make_meeting(
+        organizer=organizer, participants=(organizer, participant)
+    )
+
+    deleted = await repository.delete_meeting(meeting.id, participant.id)
+
+    assert deleted is False
+    assert (
+        await repository.get_meeting_by_id(meeting.id, participant.id) is not None
+    )
+
+
+async def test_delete_meeting_not_found(repository, make_user):
+    user = await make_user()
+
+    assert await repository.delete_meeting(MISSING_ID, user.id) is False

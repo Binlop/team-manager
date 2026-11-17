@@ -78,7 +78,7 @@ class TaskService:
         if task is None:
             raise TaskNotFoundError(task_id)
         if task.assignee_id == user.id or task.team.manager_id == user.id:
-            deleted = self.task_repo.delete_task(task.id)
+            deleted = await self.task_repo.delete_task(task.id)
             if not deleted:
                 raise TaskNotFoundError(task.id)
         else:

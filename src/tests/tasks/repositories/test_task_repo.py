@@ -1,6 +1,6 @@
 import pytest
 
-from tasks.models import Task
+from tasks.models import Task, TaskStatus
 from tasks.repositories import TaskRepository
 from tasks.schemas import TaskCreate
 
@@ -264,3 +264,51 @@ async def test_update_task_not_found(repository):
     result = await repository.update_task({"id": MISSING_ID, "title": "Renamed"})
 
     assert result is None
+
+
+async def test_update_task_can_complete_with_score_and_manager_comment(
+    repository, scene
+):
+    updated = await repository.update_task(
+        {
+            "id": scene.task.id,
+            "status": TaskStatus.DONE,
+            "score": 5,
+            "manager_comment": "Well done",
+        }
+    )
+
+    assert updated is not None
+    assert updated.status == TaskStatus.DONE
+    assert updated.score == 5
+    assert updated.manager_comment == "Well done"
+
+
+# --- delete_task ------------------------------------------------------------
+
+
+async def test_delete_task(repository, scene):
+    task_id = scene.task.id
+
+    deleted = await repository.delete_task(task_id)
+
+    assert deleted is True
+    assert await repository.get_task_by_id(task_id, scene.manager.id) is None
+
+
+async def test_delete_task_not_found(repository):
+    assert await repository.delete_task(MISSING_ID) is False
+
+
+async def test_get_task_by_id_without_assignee(
+    repository, scene, make_task, detach
+):
+    task = await make_task(scene.team, assignee=None)
+    task_id, user_id = task.id, scene.manager.id
+    await detach()
+
+    found = await repository.get_task_by_id(task_id, user_id)
+
+    assert found is not None
+    assert found.assignee_id is None
+    assert found.assignee is None

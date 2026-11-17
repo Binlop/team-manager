@@ -1,118 +1,146 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
-from auth.exceptions import UserNotFoundError
 from core.exceptions import PermissionDeniedError
-from teams.exceptions import InviteCodeAlreadyExistsError, TeamNotFoundError
-from teams.schemas import TeamCreate, TeamUpdate
-from teams.services import TeamService
+from teams.exceptions import TeamNotFoundError
+from teams.schemas import TeamBase, TeamUpdate
+from teams.services import TeamService, hash_invite_code
 
 pytestmark = pytest.mark.asyncio
 
+INVITE_CODE = "RawInvite01"
 
 
 @pytest.fixture
 def service(team_repo, user_repo):
-    return TeamService(team_repo=team_repo, user_repo=user_repo,)
+    return TeamService(team_repo=team_repo, user_repo=user_repo)
 
 
 @pytest.fixture
-def data(manager):
-    return TeamCreate(name="Alpha", invite_code="ALPHA1", manager_id=manager.id)
+def data():
+    return TeamBase(name="Alpha")
+
 
 @pytest.fixture
-def update_data():
-    return TeamUpdate(name="Alpha2", invite_code="NECODE")
+def update_data(team):
+    return TeamUpdate(id=team.id, name="Alpha 2")
+
+
+# --- get_team_or_404 --------------------------------------------------------
+
+
+async def test_get_team_or_404(service, team_repo, manager, team):
+    team_repo.get_team_for_user.return_value = team
+
+    result = await service.get_team_or_404(team.id, manager)
+
+    assert result is team
+    team_repo.get_team_for_user.assert_awaited_once_with(team.id, manager.id)
+
+
+async def test_get_team_or_404_not_found(service, team_repo, manager):
+    team_repo.get_team_for_user.return_value = None
+
+    with pytest.raises(TeamNotFoundError):
+        await service.get_team_or_404(10, manager)
+
 
 # --- get_team_members -------------------------------------------------------
 
-async def test_get_team_members(service, team_repo):
+
+async def test_get_team_members(service, team_repo, manager, team):
     members = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+    team_repo.get_team_for_user.return_value = team
     team_repo.get_team_members.return_value = members
 
-    result = await service.get_team_members(10)
+    result = await service.get_team_members(team.id, manager)
 
     assert result == members
-    team_repo.get_team_members.assert_awaited_once_with(team_id=10)
+    team_repo.get_team_for_user.assert_awaited_once_with(team.id, manager.id)
+    team_repo.get_team_members.assert_awaited_once_with(
+        team_id=team.id, user_id=manager.id
+    )
+
+
+async def test_get_team_members_team_not_found(service, team_repo, manager):
+    team_repo.get_team_for_user.return_value = None
+
+    with pytest.raises(TeamNotFoundError):
+        await service.get_team_members(10, manager)
+
+    team_repo.get_team_members.assert_not_awaited()
 
 
 # --- create_team ------------------------------------------------------------
 
-async def test_create_team(service, team_repo, user_repo, data, manager, team):
-    team_repo.get_team_by_invite_code.return_value = None
-    user_repo.get_by_user_id.return_value = manager
-    team_repo.create_team.return_value = team
 
-    result = await service.create_team(data)
+async def test_create_team(service, team_repo, data, manager):
+    created = SimpleNamespace(id=11, name=data.name, manager_id=manager.id)
+    team = SimpleNamespace(id=created.id, name=data.name, manager_id=manager.id)
+    team_repo.create_team.return_value = created
+    team_repo.get_team_for_user.return_value = team
+
+    with patch.object(
+        TeamService, "generate_invite_code", return_value=INVITE_CODE
+    ) as generate:
+        result = await service.create_team(data, manager)
 
     assert result is team
-    team_repo.get_team_by_invite_code.assert_awaited_once_with(data.invite_code)
-    user_repo.get_by_user_id.assert_awaited_once_with(data.manager_id)
-    team_repo.create_team.assert_awaited_once_with(data)
+    generate.assert_called_once_with()
+    team_repo.create_team.assert_awaited_once_with(
+        data, manager.id, hash_invite_code(INVITE_CODE)
+    )
+    team_repo.get_team_for_user.assert_awaited_once_with(created.id, manager.id)
 
 
-async def test_create_team_invite_code_already_exists(service, team_repo, user_repo, data, team):
-    team_repo.get_team_by_invite_code.return_value = team
+async def test_create_team_not_found_after_creation(service, team_repo, data, manager):
+    created = SimpleNamespace(id=11)
+    team_repo.create_team.return_value = created
+    team_repo.get_team_for_user.return_value = None
 
-    with pytest.raises(InviteCodeAlreadyExistsError):
-        await service.create_team(data)
-
-    user_repo.get_by_user_id.assert_not_awaited()
-    team_repo.create_team.assert_not_awaited()
+    with patch.object(TeamService, "generate_invite_code", return_value=INVITE_CODE):
+        with pytest.raises(TeamNotFoundError):
+            await service.create_team(data, manager)
 
 
-async def test_create_team_manager_not_found(service, team_repo, user_repo, data):
-    team_repo.get_team_by_invite_code.return_value = None
-    user_repo.get_by_user_id.return_value = None
+async def test_create_team_stores_only_hashed_invite_code(
+    service, team_repo, data, manager
+):
+    created = SimpleNamespace(id=11)
+    team_repo.create_team.return_value = created
+    team_repo.get_team_for_user.return_value = SimpleNamespace(id=created.id)
 
-    with pytest.raises(UserNotFoundError):
-        await service.create_team(data)
+    with patch.object(TeamService, "generate_invite_code", return_value=INVITE_CODE):
+        await service.create_team(data, manager)
 
-    team_repo.create_team.assert_not_awaited()
+    passed_code = team_repo.create_team.await_args.args[2]
+    assert passed_code != INVITE_CODE
+    assert passed_code == hash_invite_code(INVITE_CODE)
 
 
 # --- update_team ------------------------------------------------------------
 
+
 async def test_update_team(service, team_repo, update_data, manager, team):
-    updated = SimpleNamespace(id=team.id, name="Alpha2")
-    team_repo.get_team_by_id.return_value = team
-    team_repo.get_team_by_invite_code.return_value = None   
+    updated = SimpleNamespace(id=team.id, name=update_data.name)
+    refreshed = SimpleNamespace(id=team.id, name=update_data.name)
+    team_repo.get_team_for_user.side_effect = [team, refreshed]
     team_repo.update_team.return_value = updated
 
     result = await service.update_team(team.id, update_data, manager)
 
-    assert result is updated
-    team_repo.get_team_by_invite_code.assert_awaited_once_with("NECODE")
-    team_repo.update_team.assert_awaited_once_with(team_id=team.id, team=update_data)
-
-
-async def test_update_team_same_invite_code_skips_uniqueness_check(
-    service, team_repo, manager, team
-):
-    data = TeamUpdate(name="Alpha2", invite_code=team.invite_code)
-    team_repo.get_team_by_id.return_value = team
-
-    await service.update_team(team.id, data, manager)
-
-    team_repo.get_team_by_invite_code.assert_not_awaited()
-    team_repo.update_team.assert_awaited_once_with(team_id=team.id, team=data)
-
-
-async def test_update_team_invite_code_already_taken(
-    service, team_repo, update_data, manager, team
-):
-    team_repo.get_team_by_id.return_value = team
-    team_repo.get_team_by_invite_code.return_value = SimpleNamespace(id=99)
-
-    with pytest.raises(InviteCodeAlreadyExistsError):
-        await service.update_team(team.id, update_data, manager)
-
-    team_repo.update_team.assert_not_awaited()
+    assert result is refreshed
+    team_repo.get_team_for_user.assert_any_await(team.id, manager.id)
+    team_repo.update_team.assert_awaited_once_with(
+        team.id, update_data, manager.id
+    )
+    assert team_repo.get_team_for_user.await_count == 2
 
 
 async def test_update_team_not_found(service, team_repo, update_data, manager):
-    team_repo.get_team_by_id.return_value = None
+    team_repo.get_team_for_user.return_value = None
 
     with pytest.raises(TeamNotFoundError):
         await service.update_team(10, update_data, manager)
@@ -123,9 +151,69 @@ async def test_update_team_not_found(service, team_repo, update_data, manager):
 async def test_update_team_by_non_manager(
     service, team_repo, update_data, stranger, team
 ):
-    team_repo.get_team_by_id.return_value = team
+    team_repo.get_team_for_user.return_value = team
 
     with pytest.raises(PermissionDeniedError):
         await service.update_team(team.id, update_data, stranger)
 
     team_repo.update_team.assert_not_awaited()
+
+
+async def test_update_team_returns_not_found_if_repository_did_not_update(
+    service, team_repo, update_data, manager, team
+):
+    team_repo.get_team_for_user.return_value = team
+    team_repo.update_team.return_value = None
+
+    with pytest.raises(TeamNotFoundError):
+        await service.update_team(team.id, update_data, manager)
+
+
+# --- refresh_invite_code ----------------------------------------------------
+
+
+async def test_refresh_invite_code(service, team_repo, manager, team):
+    team_repo.get_team_for_user.return_value = team
+    team_repo.update_invite_code_team.return_value = team
+
+    with patch.object(
+        TeamService, "generate_invite_code", return_value=INVITE_CODE
+    ) as generate:
+        result = await service.refresh_invite_code(team.id, manager)
+
+    assert result == INVITE_CODE
+    generate.assert_called_once_with()
+    team_repo.update_invite_code_team.assert_awaited_once_with(
+        team.id, hash_invite_code(INVITE_CODE), manager.id
+    )
+
+
+async def test_refresh_invite_code_team_not_found(service, team_repo, manager):
+    team_repo.get_team_for_user.return_value = None
+
+    with pytest.raises(TeamNotFoundError):
+        await service.refresh_invite_code(10, manager)
+
+    team_repo.update_invite_code_team.assert_not_awaited()
+
+
+async def test_refresh_invite_code_by_non_manager(
+    service, team_repo, stranger, team
+):
+    team_repo.get_team_for_user.return_value = team
+
+    with pytest.raises(PermissionDeniedError):
+        await service.refresh_invite_code(team.id, stranger)
+
+    team_repo.update_invite_code_team.assert_not_awaited()
+
+
+async def test_refresh_invite_code_repository_did_not_update(
+    service, team_repo, manager, team
+):
+    team_repo.get_team_for_user.return_value = team
+    team_repo.update_invite_code_team.return_value = None
+
+    with patch.object(TeamService, "generate_invite_code", return_value=INVITE_CODE):
+        with pytest.raises(TeamNotFoundError):
+            await service.refresh_invite_code(team.id, manager)

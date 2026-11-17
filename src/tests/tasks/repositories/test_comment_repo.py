@@ -68,7 +68,7 @@ async def test_get_comment_by_id_not_found(repository, scene):
 
 
 # --- get_comments_by_task_id ------------------------------------------------
-# В запросе нет order_by, поэтому порядок в тестах не проверяется.
+# Репозиторий сортирует комментарии по id.
 
 @pytest.mark.parametrize("role", ACCESS_ROLES)
 async def test_get_comments_by_task_id_with_access(
@@ -119,6 +119,35 @@ async def test_update_comment(repository, scene, make_comment):
     assert updated.description == "Edited"
     assert updated.author_id == scene.member.id
     assert updated.task_id == scene.task.id
+
+
+async def test_update_comment_returns_comments_in_id_order(
+    repository, scene, make_comment, detach
+):
+    first = await make_comment(scene.task, scene.member, description="First")
+    second = await make_comment(scene.task, scene.assignee, description="Second")
+    task_id, user_id = scene.task.id, scene.member.id
+    expected = [first.id, second.id]
+    await detach()
+
+    comments = await repository.get_comments_by_task_id(task_id, user_id)
+
+    assert [c.id for c in comments] == expected
+
+
+async def test_update_comment_by_non_author(
+    repository, scene, make_comment
+):
+    comment = await make_comment(scene.task, scene.member, description="Old")
+
+    updated = await repository.update_comment(
+        comment.id, CommentUpdate(description="Hacked"), scene.manager.id
+    )
+
+    assert updated is None
+    found = await repository.get_comment_by_id(comment.id, scene.member.id)
+    assert found is not None
+    assert found.description == "Old"
 
 
 async def test_update_comment_not_found(repository):

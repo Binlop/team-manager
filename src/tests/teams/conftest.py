@@ -14,6 +14,7 @@ from teams.models import Meeting, MeetingStatus, Team, TeamMember, TeamRole, Use
 
 ROLE_MANAGER = TeamRole.MANAGER
 ROLE_MEMBER = TeamRole.MEMBER
+ROLE_ADMIN = TeamRole.ADMIN
 
 # Naive datetime: SQLite всё равно не хранит tzinfo.
 T0 = datetime(2030, 1, 1, 10, 0)
@@ -23,7 +24,11 @@ _counter = itertools.count(1)
 
 @pytest.fixture
 def roles():
-    return SimpleNamespace(MANAGER=ROLE_MANAGER, MEMBER=ROLE_MEMBER)
+    return SimpleNamespace(
+        MANAGER=ROLE_MANAGER,
+        MEMBER=ROLE_MEMBER,
+        ADMIN=ROLE_ADMIN,
+    )
 
 
 @pytest.fixture

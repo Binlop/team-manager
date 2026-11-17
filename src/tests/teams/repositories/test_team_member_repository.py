@@ -130,6 +130,19 @@ async def test_add_team_member(repository, make_team, make_user, roles):
     assert member.role == roles.MEMBER
 
 
+async def test_add_team_member_uses_member_role_by_default(
+    repository, make_team, make_user, roles
+):
+    team = await make_team()
+    user = await make_user()
+
+    member = await repository.add_team_member(
+        TeamMemberCreate(user_id=user.id, team_id=team.id)
+    )
+
+    assert member.role == roles.MEMBER
+
+
 # --- remove_member ----------------------------------------------------------
 
 async def test_remove_member(repository, make_team, make_user, make_member):
@@ -182,6 +195,27 @@ async def test_update_member_role(repository, make_team, make_user, make_member,
     assert updated is not None
     assert updated.id == member.id
     assert updated.role == roles.MANAGER
+
+
+async def test_update_member_role_updates_only_target_member(
+    repository, make_team, make_user, make_member, roles
+):
+    team = await make_team()
+    target_user = await make_user()
+    other_user = await make_user()
+    target = await make_member(target_user, team, role=roles.MEMBER)
+    other = await make_member(other_user, team, role=roles.MEMBER)
+
+    updated = await repository.update_member_role(
+        TeamMemberUpdate(id=target.id, team_id=team.id, role=roles.ADMIN)
+    )
+    other_after = await repository.get_member_by_id(other.id)
+
+    assert updated is not None
+    assert updated.id == target.id
+    assert updated.role == roles.ADMIN
+    assert other_after is not None
+    assert other_after.role == roles.MEMBER
 
 
 async def test_update_member_role_not_found(repository, roles):
