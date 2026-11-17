@@ -3,8 +3,8 @@ import string
 from datetime import datetime
 from teams.models import Team, TeamMember, TeamRole, Meeting, UserMeeting
 from teams.repositories import TeamRepository, TeamMemberRepository, MeetingRepository
-from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate, MeetingUpdate, UserMeetingCreate
-from teams.exceptions import TeamNotFoundError, InviteCodeAlreadyExistsError, TeamMemberNotFoundError, TeamMemberAlreadyExistsError, CannotRemoveManagerError, MeetingNotFoundError
+from teams.schemas import TeamBase, TeamUpdate, TeamRead, TeamWithInviteCode, TeamMemberCreate, TeamMemberUpdate, MeetingCreate, MeetingUpdate, UserMeetingCreate
+from teams.exceptions import TeamNotFoundError, TeamMemberNotFoundError, TeamMemberAlreadyExistsError, CannotRemoveManagerError, MeetingNotFoundError
 from teams import exceptions
 from auth.models import User
 from auth.repositories import UserRepository
@@ -29,11 +29,12 @@ class TeamService:
         self.team_repo = team_repo
         self.user_repo = user_repo
 
-    async def get_team_or_404(self, team_id: int, user: User) -> Team:
+    async def get_team_or_404(self, team_id: int, user: User) -> TeamRead:
+        """Альтернатива get_team_or_404: DTO без invite_code (и без его хеша)."""
         team = await self.team_repo.get_team_for_user(team_id, user.id)
         if team is None:
             raise exceptions.TeamNotFoundError(team_id)
-        return team
+        return TeamRead.model_validate(team)
 
     async def get_team_members(self, team_id: int, user: User) -> list[TeamMember]:
         team = await self.team_repo.get_team_for_user(team_id, user.id)
@@ -42,14 +43,20 @@ class TeamService:
         team_members = await self.team_repo.get_team_members(team_id=team_id, user_id=user.id)
         return team_members
 
-    async def create_team(self, data: TeamBase, user: User) -> Team:
+    async def create_team(
+        self, data: TeamBase, user: User
+    ) -> TeamWithInviteCode:
+        """Альтернатива create_team: возвращает команду и raw-код приглашения."""
         invite_code = self.generate_invite_code()
         invite_code_hash = hash_invite_code(invite_code)
         created = await self.team_repo.create_team(data, user.id, invite_code_hash)
         team = await self.team_repo.get_team_for_user(created.id, user.id)
         if team is None:
             raise TeamNotFoundError(model_object_id=created.id)
-        return team
+        return TeamWithInviteCode(
+            **TeamRead.model_validate(team).model_dump(),
+            invite_code=invite_code,
+        )
     
     async def update_team(self, team_id: int, data: TeamUpdate, manager: User) -> Team | None:
         team = await self.team_repo.get_team_for_user(team_id, manager.id)
@@ -63,7 +70,9 @@ class TeamService:
         team = await self.team_repo.get_team_for_user(updated.id, manager.id)
         return team
 
-    async def refresh_invite_code(self, team_id, manager: User) -> str:
+    async def refresh_invite_code(
+        self, team_id: int, manager: User
+    ) -> TeamWithInviteCode:
         team = await self.team_repo.get_team_for_user(team_id, manager.id)
         if team is None:
             raise TeamNotFoundError(model_object_id=team_id)
@@ -74,7 +83,14 @@ class TeamService:
         updated = await self.team_repo.update_invite_code_team(team_id, invite_code_hash, manager.id)
         if updated is None:
             raise TeamNotFoundError(model_object_id=team_id)
-        return invite_code
+        
+        team = await self.team_repo.get_team_for_user(team_id, manager.id)
+        if team is None:
+            raise TeamNotFoundError(model_object_id=team_id)
+        return TeamWithInviteCode(
+            **TeamRead.model_validate(team).model_dump(),
+            invite_code=invite_code,
+        )
     
     @staticmethod
     def generate_invite_code(length: int = 12) -> str:
@@ -94,19 +110,19 @@ class TeamMemberService:
         self.team_repo = team_repo
         self.team_member_repo = team_member_repo
 
-    async def add_member(self, data: TeamMemberCreate, manager: User) -> TeamMember:
-        team = await self.team_repo.get_team_for_user(data.team_id, manager.id)
+    async def add_member(self, team_id: int, data: TeamMemberCreate, manager: User) -> TeamMember:
+        team = await self.team_repo.get_team_for_user(team_id, manager.id)
         if team is None:
-            raise TeamNotFoundError(model_object_id=data.team_id)
+            raise TeamNotFoundError(model_object_id=team_id)
         if team.manager_id != manager.id:
             raise PermissionDeniedError()
         is_member_exists = await self.team_member_repo.check_member_exists_with_user_id_and_team_id(
             data.user_id,
-            data.team_id,
+            team_id,
         )
         if is_member_exists is True:
-            raise TeamMemberAlreadyExistsError(user_id=data.user_id, team_id=data.team_id)
-        created_member = await self.team_member_repo.add_team_member(data)
+            raise TeamMemberAlreadyExistsError(user_id=data.user_id, team_id=team_id)
+        created_member = await self.team_member_repo.add_team_member(data, team_id)
         member = await self.team_member_repo.get_member_by_id(member_id=created_member.id)
         if member is None:
             raise TeamMemberNotFoundError(created_member.id)
@@ -125,34 +141,39 @@ class TeamMemberService:
         if is_member_exists is True:
             raise TeamMemberAlreadyExistsError(user_id=user.id, team_id=team.id)
         
-        data = TeamMemberCreate(user_id=user.id, team_id=team.id)
-        created_member = await self.team_member_repo.add_team_member(data)
+        data = TeamMemberCreate(user_id=user.id)
+        created_member = await self.team_member_repo.add_team_member(data, team.id)
         member = await self.team_member_repo.get_member_by_id(member_id=created_member.id)
         if member is None:
             raise TeamMemberNotFoundError(created_member.id)
         return member
 
-    async def update_member_role(self, data: TeamMemberUpdate, manager: User):
-        team = await self.team_repo.get_team_for_user(data.team_id, manager.id)
+    async def update_member_role(self, team_id: int, data: TeamMemberUpdate, manager: User):
+        team = await self.team_repo.get_team_for_user(team_id, manager.id)
         if team is None:
-            raise TeamNotFoundError(model_object_id=data.team_id)
+            raise TeamNotFoundError(model_object_id=team_id)
         if team.manager_id != manager.id:
             raise PermissionDeniedError()
-        updated = await self.team_member_repo.update_member_role(member=data)
+        member = await self.team_member_repo.get_member_by_team_and_user_id(team_id, manager.id)
+        
+        if member is None:
+            raise TeamMemberNotFoundError(model_object_id=data.id)
+        if member.role == TeamRole.MEMBER and member.user_id == manager.id:
+            raise exceptions.CannotDemoteManagerError()
+        
+        updated = await self.team_member_repo.update_member_role(member=data, team_id=team_id)
         if updated is None:
             raise TeamMemberNotFoundError(model_object_id=data.id)
-        if updated.role == TeamRole.MEMBER and updated.user_id == manager.id:
-            raise exceptions.CannotDemoteManagerError()
         
         if updated.role == TeamRole.MANAGER and updated.user_id != manager.id:
             previous_manager = await self.team_member_repo.get_member_by_team_and_user_id(team_id=updated.team_id, user_id=manager.id)
             if previous_manager is None:
                 raise TeamMemberNotFoundError(model_object_id=manager.id)
-            data_to_update_previous_manager = TeamMemberUpdate(id=previous_manager.id, team_id=updated.team_id, role=TeamRole.MEMBER)
-            await self.team_member_repo.update_member_role(member=data_to_update_previous_manager)
-            await self.team_repo.update_team_manager(team_id=data.team_id, manager_id=updated.user_id)
+            data_to_update_previous_manager = TeamMemberUpdate(id=previous_manager.id, role=TeamRole.MEMBER)
+            await self.team_member_repo.update_member_role(member=data_to_update_previous_manager, team_id=team_id)
+            await self.team_repo.update_team_manager(team_id=team_id, manager_id=updated.user_id)
         member = await self.team_member_repo.get_member_by_id(updated.id)
-        if member is None or member.team_id != data.team_id:
+        if member is None or member.team_id != team_id:
             raise TeamMemberNotFoundError(model_object_id=data.id)
         return member
 
@@ -221,7 +242,13 @@ class MeetingService:
             raise MeetingNotFoundError(data.id)
         if meeting.organizer_id != user.id:
             raise PermissionDeniedError()
-        
+
+        users_id = [user.id for user in meeting.users]
+        if users_id:
+            busy_users = await self.meeting_repo.get_busy_users(meeting.id, data.starts_at, data.ends_at, users_id)
+            if busy_users:
+                raise exceptions.ParticipantTimeConflictError(meeting.starts_at, meeting.ends_at)
+             
         updated = await self.meeting_repo.update_meeting(data)
         if updated is None:
             raise MeetingNotFoundError(data.id)

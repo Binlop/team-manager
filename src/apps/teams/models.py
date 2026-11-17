@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 import enum
 from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, ForeignKey, DateTime, Integer, Enum, UniqueConstraint, CheckConstraint
+from sqlalchemy import String, ForeignKey, DateTime, Integer, Enum, UniqueConstraint, CheckConstraint, Index
 
 from db.session import Base
 from auth.models import User
@@ -72,14 +72,15 @@ class Meeting(Base):
     organizer: Mapped["User"] = relationship(back_populates="organized_meetings")
     participants: Mapped[list["UserMeeting"]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
     users: Mapped[list["User"]] = relationship(
-        secondary="user_meetting",
+        secondary="user_meeting",
         viewonly=True,
     )
 
 class UserMeeting(Base):
-    __tablename__ = "user_meetting"
+    __tablename__ = "user_meeting"
     __table_args__ = (
         UniqueConstraint("user_id", "meeting_id", name="uq_user_meeting"),
+        Index("ix_user_meetings_user_meeting", "user_id", "meeting_id")
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -88,3 +89,5 @@ class UserMeeting(Base):
 
     user: Mapped["User"] = relationship(back_populates="meetings")
     meeting: Mapped["Meeting"] = relationship(back_populates="participants")
+
+    

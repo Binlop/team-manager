@@ -9,10 +9,14 @@ class TeamBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class TeamRead(TeamBase):
+    id: int
     manager: UserRead
 
 class TeamReadBrief(TeamBase):
     id: int
+
+class TeamWithInviteCode(TeamRead):
+    invite_code: str
 
 class TeamUpdate(TeamBase):
     id: int
@@ -26,14 +30,14 @@ class TeamMemberRead(BaseModel):
 
 class TeamMemberCreate(BaseModel):
     user_id: int
-    team_id: int
+    # team_id: int
     role: TeamRole = TeamRole.MEMBER 
 
     model_config = ConfigDict(from_attributes=True)
 
 class TeamMemberUpdate(BaseModel):
     id: int
-    team_id: int
+    # team_id: int
     role: TeamRole
 
     model_config = ConfigDict(from_attributes=True)
@@ -58,7 +62,7 @@ class MeetingRead(MeetingBase):
     users: list[UserRead]
 
 class MeetingCreate(MeetingBase):
-    pass
+    status: MeetingStatus = MeetingStatus.SCHEDULED
 
 class MeetingUpdate(MeetingBase):
     id: int

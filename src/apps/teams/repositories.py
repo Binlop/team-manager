@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
 from teams.models import Team, TeamMember, Meeting, UserMeeting, MeetingStatus
 from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, MeetingCreate,  MeetingUpdate
+from auth.models import User
 
 def is_member(team_id: int, user_id: int):
     is_member = (
@@ -161,10 +162,10 @@ class TeamMemberRepository:
         result = await self.uow.db.execute(stmt)
         return result.scalar_one()  
 
-    async def add_team_member(self, member: TeamMemberCreate) -> TeamMember:
+    async def add_team_member(self, member: TeamMemberCreate, team_id: int) -> TeamMember:
         team_member = TeamMember(
             user_id = member.user_id,
-            team_id = member.team_id,
+            team_id = team_id,
             role = member.role,
         )
         self.uow.db.add(team_member)
@@ -180,10 +181,13 @@ class TeamMemberRepository:
         result = await self.uow.db.execute(stmt)
         return result.rowcount > 0 # type: ignore
 
-    async def update_member_role(self, member: TeamMemberUpdate) -> TeamMember | None:
+    async def update_member_role(self, member: TeamMemberUpdate, team_id: int) -> TeamMember | None:
         stmt = (
             update(TeamMember)
-            .where(TeamMember.id == member.id)
+            .where(
+                TeamMember.id == member.id,
+                TeamMember.team_id == team_id,
+            )
             .values(role=member.role)
             .returning(TeamMember)
         )
@@ -258,6 +262,7 @@ class MeetingRepository:
                     ),
                     Meeting.starts_at < ends_at,
                     Meeting.ends_at > starts_at,
+                    Meeting.status == MeetingStatus.SCHEDULED,
                 )
             )
         )
@@ -281,6 +286,7 @@ class MeetingRepository:
             select(Meeting).where(
                 Meeting.starts_at < ends_at,
                 Meeting.ends_at > starts_at,
+                Meeting.status == MeetingStatus.SCHEDULED,
                 Meeting.participants.any(UserMeeting.user_id == user_id)
             )
             .options(
@@ -305,6 +311,27 @@ class MeetingRepository:
         )
         res = await self.uow.db.execute(stmt)
         return res.scalar_one_or_none()
+
+    async def get_busy_users(self, meeting_id: int, new_start: datetime, new_end: datetime, users_id: list[int]) -> list[tuple[str, str]]:
+        has_conflict = (
+            select(1)
+            .select_from(UserMeeting)
+            .join(Meeting, Meeting.id == UserMeeting.meeting_id)
+            .where(
+                UserMeeting.user_id == User.id,
+                UserMeeting.meeting_id != meeting_id,
+                Meeting.starts_at < new_end,
+                Meeting.ends_at > new_start,
+            )
+            .exists()
+        )
+
+        stmt = select(User.first_name, User.last_name).where(
+            User.id._in(users_id),
+            has_conflict,
+        )
+        res = await self.uow.db.execute(stmt)
+        return list(res.all())
 
     async def delete_meeting(self, meeting_id: int, user_id: int) -> bool:
         """Удаляет встречу."""
