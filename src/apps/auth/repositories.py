@@ -1,10 +1,10 @@
+import asyncio
 from sqlalchemy import select, update, exists
 from datetime import datetime, timezone
 from db.uow import UnitOfWork
 from auth.models import User, Token
 from auth.schemas import UserCreate
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
 
 ph = PasswordHasher()
 
@@ -14,11 +14,14 @@ class UserRepository:
         self.uow = uow
 
     async def create_user(self, data: UserCreate) -> User:
-        hashed = ph.hash(data.password)
+        hashed_password = await asyncio.to_thread(
+            self.hashed_password,
+            data.password
+        )
         user = User(
             email=data.email,
             username=data.username,
-            hashed_password=hashed,
+            hashed_password=hashed_password,
             first_name=data.first_name,
             last_name=data.last_name,
         )
@@ -45,6 +48,9 @@ class UserRepository:
         result = await self.uow.db.execute(stmt)
         return result.scalar_one()
 
+    @staticmethod
+    def hashed_password(password: str) -> str:
+        return ph.hash(password)
 
 class TokenRepository:
 

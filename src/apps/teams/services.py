@@ -154,11 +154,11 @@ class TeamMemberService:
             raise TeamNotFoundError(model_object_id=team_id)
         if team.manager_id != manager.id:
             raise PermissionDeniedError()
-        member = await self.team_member_repo.get_member_by_team_and_user_id(team_id, manager.id)
         
-        if member is None:
-            raise TeamMemberNotFoundError(model_object_id=data.id)
-        if member.role == TeamRole.MEMBER and member.user_id == manager.id:
+        manager_member = await self.team_member_repo.get_member_by_team_and_user_id(team_id, manager.id)
+        if manager_member is None:
+            raise PermissionDeniedError()
+        if manager_member.role == TeamRole.MEMBER and manager_member.user_id == manager.id:
             raise exceptions.CannotDemoteManagerError()
         
         updated = await self.team_member_repo.update_member_role(member=data, team_id=team_id)

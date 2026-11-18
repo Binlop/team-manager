@@ -10,7 +10,6 @@ from auth.repositories import UserRepository, TokenRepository
 from auth.schemas import UserCreate, UserLogin, TokenResponse, RefreshTokenRequest
 from core.cache import RedisCache
 
-# pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 ph = PasswordHasher()
 
 class UserService:

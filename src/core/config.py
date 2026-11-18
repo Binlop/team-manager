@@ -10,9 +10,8 @@ if not ENV_FILE.exists():
     ENV_FILE = CONFIG_DIR / ".env.example"
 
 class Settings(BaseSettings):
-    SECRET_KEY: str = ""
+    SECRET_KEY: str
     DEBUG: bool = False
-    PROJECT_NAME: str = "Analytics API"
     APP_ENV: Literal["prod", "dev", "test"] = "dev"
     PROJECT_NAME: str = "Team Manager API"
     ALGORITHM: str = "HS256"
@@ -69,4 +68,4 @@ class Settings(BaseSettings):
         host = "redis" if self.APP_ENV == "prod" else "127.0.0.1"
         return host
 
-settings = Settings()
+settings = Settings() # type: ignore

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
-from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, TeamRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
+from teams.schemas import TeamBase, TeamUpdate, TeamMemberCreate, TeamMemberUpdate, TeamMemberRead, MeetingCreate, MeetingUpdate, MeetingRead, UserMeetingCreate, UserMeetingRead
 from teams import schemas
-from teams.deps import TeamServiceDep, TeamRepoDep, TeamMemberServiceDep, MeetingServiceDep, TeamServiceDep
+from teams.deps import TeamServiceDep, TeamMemberServiceDep, MeetingServiceDep
 from api.deps import UserDep
 
 
@@ -77,7 +77,7 @@ async def add_meeting_member(data: UserMeetingCreate, service: MeetingServiceDep
 async def get_user_meetings(service: MeetingServiceDep, user: UserDep):
     return await service.get_user_meetings(user)
 
-@meeting_router.put("/{meeting_id}/", response_model=MeetingRead, status_code=status.HTTP_200_OK)
+@meeting_router.put("/{meeting_id}", response_model=MeetingRead, status_code=status.HTTP_200_OK)
 async def update_meeting(
     meeting_id: int,
     data: MeetingUpdate,
@@ -86,7 +86,7 @@ async def update_meeting(
 ):
     return await service.update_meeting(data, user)
 
-@meeting_router.delete("/{meeting_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@meeting_router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_meeting(
     meeting_id: int, 
     service: MeetingServiceDep, 

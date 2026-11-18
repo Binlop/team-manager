@@ -26,7 +26,7 @@ def upgrade() -> None:
     sa.Column('title', sa.String(length=200), nullable=False),
     sa.Column('description', sa.String(length=500), nullable=True),
     sa.Column('due_date', sa.Date(), nullable=True),
-    sa.Column('status', sa.Enum('open', 'in_progress', 'done', name='status_enum'), nullable=False),
+    sa.Column('status', sa.Enum('open', 'in_progress', 'done', 'review', name='status_enum'), nullable=False),
     sa.Column('assignee_id', sa.Integer(), nullable=True),
     sa.Column('team_id', sa.Integer(), nullable=False),
     sa.Column('score', sa.Integer(), nullable=True),

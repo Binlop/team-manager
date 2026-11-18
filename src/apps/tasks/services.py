@@ -2,13 +2,20 @@ from core.exceptions import PermissionDeniedError
 from tasks.repositories import TaskRepository, CommentRepository
 from tasks.schemas import TaskCreate, TaskUpdate, CommentCreate, CommentUpdate
 from tasks.models import Task, Comment, TaskStatus
-from tasks.exceptions import AssigneeNotInTeamError, TaskNotFoundError, CommentNotFoundError
+from tasks.exceptions import AssigneeNotInTeamError, TaskNotFoundError, CommentNotFoundError, ScoreStatusMismatchError, InvalidStatusTransitionError
 from auth.models import User
 from teams.repositories import TeamRepository, TeamMemberRepository
 from teams.exceptions import TeamNotFoundError
 
 
 class TaskService:
+
+    ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
+        TaskStatus.OPEN: {TaskStatus.IN_PROGRESS},
+        TaskStatus.IN_PROGRESS: {TaskStatus.REVIEW},
+        TaskStatus.REVIEW: {TaskStatus.DONE, TaskStatus.IN_PROGRESS},
+        TaskStatus.DONE: set(),
+    }
 
     def __init__(
             self,
@@ -66,11 +73,16 @@ class TaskService:
         if not is_manager:
             raise PermissionDeniedError()
         
-        payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
         if data.assignee_id is not None:
             if not await self.team_member_repo.check_member_exists_with_user_id_and_team_id(data.assignee_id, task.team_id):
                 raise AssigneeNotInTeamError(data.assignee_id, task.team_id)
 
+        has_score = data.score is not None
+        is_done = data.status == TaskStatus.DONE
+        if has_score != is_done:
+            raise ScoreStatusMismatchError(data.score, data.status.value)
+        
+        payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
         updated = await self.task_repo.update_task({"id": data.id, **payload})
         if updated is None:
             raise TaskNotFoundError(data.id)
@@ -90,6 +102,13 @@ class TaskService:
                 raise TaskNotFoundError(task.id)
         else:
             raise PermissionDeniedError()
+
+    def is_status_transition_allowed(self, current: TaskStatus, target: TaskStatus) -> bool:
+        return target in self.ALLOWED_TRANSITIONS[current]
+
+    def validate_status_transition(self, current: TaskStatus, target: TaskStatus) -> None:
+        if not self.is_status_transition_allowed(current, target):
+            raise InvalidStatusTransitionError(current.value, target.value)
 
 class CommentService:
 
@@ -145,7 +164,7 @@ class CommentService:
             raise CommentNotFoundError(comment_id)
         if comment.author_id != user.id:
             raise PermissionDeniedError()
-        deleted = await self.comment_repo.delete_comment(comment_id, user.id)
+        deleted = await self.comment_repo.delete_comment(comment.id, user.id)
         if not deleted:
-            raise PermissionDeniedError()
+            raise CommentNotFoundError(comment.id)
         
