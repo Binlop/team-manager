@@ -1,10 +1,10 @@
 from typing import Any
-from datetime import date
+from datetime import datetime
 from sqlalchemy import select, delete, update, exists, or_, func
 from sqlalchemy.orm import selectinload, joinedload
 from db.uow import UnitOfWork
 from teams.models import Team, TeamMember
-from tasks.models import Task, Comment
+from tasks.models import Task, Comment, TaskStatus
 from tasks.schemas import TaskCreate, CommentCreate, CommentUpdate
 
 def _user_has_access_task(user_id: int):
@@ -101,18 +101,22 @@ class TaskRepository:
             select(func.avg(Task.score))
             .where(
                 Task.assignee_id == user_id,
-                Task.score.is_not(None)
+                Task.score.is_not(None),
+                Task.status == TaskStatus.DONE,
             )
         )
         result = await self.uow.db.scalar(stmt)
         return float(result) if result is not None else None
 
-    async def get_user_tasks_in_time(self, starts_at: date, ends_at: date, user_id: int) -> list[Task]:
+    async def get_user_tasks_in_time(self, starts_at: datetime, ends_at: datetime, user_id: int) -> list[Task]:
+        start_date = starts_at.date()
+        end_date = ends_at.date()
+
         stmt = (
             select(Task).where(
                 Task.assignee_id == user_id,
-                Task.due_date >= starts_at,
-                Task.due_date <= ends_at,
+                Task.due_date >= start_date,
+                Task.due_date <= end_date,
             )
             .options(
                 joinedload(Task.team),

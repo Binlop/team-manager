@@ -80,11 +80,10 @@ class UserMeeting(Base):
     __tablename__ = "user_meeting"
     __table_args__ = (
         UniqueConstraint("user_id", "meeting_id", name="uq_user_meeting"),
-        Index("ix_user_meetings_user_meeting", "user_id", "meeting_id")
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
     meeting_id: Mapped[int] = mapped_column(ForeignKey("meeting.id", ondelete="CASCADE"), index=True)
 
     user: Mapped["User"] = relationship(back_populates="meetings")

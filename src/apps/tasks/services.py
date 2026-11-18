@@ -27,7 +27,10 @@ class TaskService:
         return task
 
     async def get_team_tasks(self, team_id: int, user: User) -> list[Task]:
-        tasks = await self.task_repo.get_tasks_by_team_id(team_id, user.id)
+        team = await self.team_repo.get_team_for_user(team_id, user.id)
+        if team is None:
+            raise TeamNotFoundError(team_id)
+        tasks = await self.task_repo.get_tasks_by_team_id(team.id, user.id)
         return tasks
 
     async def get_user_tasks(self, user: User) -> list[Task]:
@@ -64,6 +67,10 @@ class TaskService:
             raise PermissionDeniedError()
         
         payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
+        if data.assignee_id is not None:
+            if not await self.team_member_repo.check_member_exists_with_user_id_and_team_id(data.assignee_id, task.team_id):
+                raise AssigneeNotInTeamError(data.assignee_id, task.team_id)
+
         updated = await self.task_repo.update_task({"id": data.id, **payload})
         if updated is None:
             raise TaskNotFoundError(data.id)
@@ -111,7 +118,10 @@ class CommentService:
         return comment
     
     async def get_comments_by_task_id(self, task_id: int, user: User) -> list[Comment]:
-        comments = await self.comment_repo.get_comments_by_task_id(task_id, user.id)
+        task = await self.task_repo.get_task_by_id(task_id, user.id)
+        if task is None:
+            raise TaskNotFoundError(task_id)
+        comments = await self.comment_repo.get_comments_by_task_id(task.id, user.id)
         return comments
 
     async def update_comment(self, comment_id: int, data: CommentUpdate, user: User) -> Comment:
@@ -130,6 +140,11 @@ class CommentService:
         return result
 
     async def delete_comment(self, comment_id: int, user: User) -> None:
+        comment = await self.comment_repo.get_comment_by_id(comment_id, user.id)
+        if comment is None:
+            raise CommentNotFoundError(comment_id)
+        if comment.author_id != user.id:
+            raise PermissionDeniedError()
         deleted = await self.comment_repo.delete_comment(comment_id, user.id)
         if not deleted:
             raise PermissionDeniedError()

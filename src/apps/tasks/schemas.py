@@ -30,12 +30,14 @@ class TaskCreate(TaskBase):
     assignee_id: int | None
     team_id: int
 
-class TaskUpdate(TaskCreate):
+class TaskUpdate(TaskBase):
     id: int
+    assignee_id: int | None
+    manager_comment: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def validate_done_requires_score(self) -> Self:
-        if self.status == TaskStatus.DONE and self.score is None:
+        if self.status == TaskStatus.DONE and (self.score is None or self.manager_comment is None):
             raise ValueError("score is required when status is DONE")
         return self
 

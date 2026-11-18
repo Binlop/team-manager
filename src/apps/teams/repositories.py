@@ -327,7 +327,7 @@ class MeetingRepository:
         )
 
         stmt = select(User.first_name, User.last_name).where(
-            User.id._in(users_id),
+            User.id.in_(users_id),
             has_conflict,
         )
         res = await self.uow.db.execute(stmt)
