@@ -32,7 +32,18 @@ class InvalidStatusTransitionError(DomainError):
 
     def __init__(self, current: str, target: str):
         self.detail = (
-            f"Недопустимый переход статуса: {current!r} → {target!r}. "
-            f"Разрешённые переходы из {current!r}: ..."
+            f"Недопустимый переход статуса: {current} → {target}. "
+            f"Разрешённые переходы из {current}: ..."
         )
+        super().__init__(self.detail)
+
+class InvalidStatusError(DomainError):
+    status_code = 422
+    error_code = "invalid_status"
+
+    def __init__(self, value: str):
+        self.detail = (
+            f"Неизвестный статус: {value}. "
+        )
+        super().__init__(self.detail)
         super().__init__(self.detail)

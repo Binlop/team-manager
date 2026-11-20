@@ -10,7 +10,10 @@ from auth.exceptions import InvalidTokenError
 
 @pytest.fixture
 def uow():
-    return MagicMock()
+    mock_uow = MagicMock()
+    mock_uow.commit = AsyncMock()
+    mock_uow.rollback = AsyncMock()
+    return mock_uow
 
 
 @pytest.fixture

@@ -36,7 +36,8 @@ async def test_get_team_or_404(service, team_repo, manager, team):
 
     result = await service.get_team_or_404(team.id, manager)
 
-    assert result is team
+    assert result.id == team.id
+    assert result.name == team.name
     team_repo.get_team_for_user.assert_awaited_once_with(team.id, manager.id)
 
 
@@ -77,8 +78,18 @@ async def test_get_team_members_team_not_found(service, team_repo, manager):
 
 
 async def test_create_team(service, team_repo, data, manager):
-    created = SimpleNamespace(id=11, name=data.name, manager_id=manager.id)
-    team = SimpleNamespace(id=created.id, name=data.name, manager_id=manager.id)
+    created = SimpleNamespace(
+        id=11,
+        name=data.name,
+        manager_id=manager.id,
+        manager=SimpleNamespace(id=manager.id, first_name="Man", last_name="Ager"),
+    )
+    team = SimpleNamespace(
+        id=created.id,
+        name=data.name,
+        manager_id=manager.id,
+        manager=created.manager,
+    )
     team_repo.create_team.return_value = created
     team_repo.get_team_for_user.return_value = team
 
@@ -87,7 +98,8 @@ async def test_create_team(service, team_repo, data, manager):
     ) as generate:
         result = await service.create_team(data, manager)
 
-    assert result is team
+    assert result.invite_code == INVITE_CODE
+    assert result.name == data.name
     generate.assert_called_once_with()
     team_repo.create_team.assert_awaited_once_with(
         data, manager.id, hash_invite_code(INVITE_CODE)
@@ -108,9 +120,13 @@ async def test_create_team_not_found_after_creation(service, team_repo, data, ma
 async def test_create_team_stores_only_hashed_invite_code(
     service, team_repo, data, manager
 ):
-    created = SimpleNamespace(id=11)
+    created = SimpleNamespace(id=11, name=data.name)
     team_repo.create_team.return_value = created
-    team_repo.get_team_for_user.return_value = SimpleNamespace(id=created.id)
+    team_repo.get_team_for_user.return_value = SimpleNamespace(
+        id=created.id,
+        name=data.name,
+        manager=SimpleNamespace(id=manager.id, first_name="Man", last_name="Ager"),
+    )
 
     with patch.object(TeamService, "generate_invite_code", return_value=INVITE_CODE):
         await service.create_team(data, manager)
@@ -181,7 +197,7 @@ async def test_refresh_invite_code(service, team_repo, manager, team):
     ) as generate:
         result = await service.refresh_invite_code(team.id, manager)
 
-    assert result == INVITE_CODE
+    assert result.invite_code == INVITE_CODE
     generate.assert_called_once_with()
     team_repo.update_invite_code_team.assert_awaited_once_with(
         team.id, hash_invite_code(INVITE_CODE), manager.id

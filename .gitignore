@@ -8,4 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
-src/core/.env
+
+# Environment variables (секреты не коммитятся)
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+.pytest_cache/
+.coverage
+htmlcov/

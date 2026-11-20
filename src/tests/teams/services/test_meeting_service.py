@@ -33,7 +33,11 @@ def organizer(manager):
 @pytest.fixture
 def meeting(organizer):
     return SimpleNamespace(
-        id=1, organizer_id=organizer.id, starts_at=STARTS_AT, ends_at=ENDS_AT
+        id=1,
+        organizer_id=organizer.id,
+        starts_at=STARTS_AT,
+        ends_at=ENDS_AT,
+        users=[],
     )
 
 

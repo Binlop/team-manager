@@ -186,10 +186,10 @@ async def test_get_tasks_by_user_id_empty(repository, scene):
 # --- get_mean_task_score_for_user -------------------------------------------
 
 async def test_get_mean_task_score_for_user(repository, scene, make_task):
-    await make_task(scene.team, assignee=scene.assignee, score=4)
-    await make_task(scene.team, assignee=scene.assignee, score=5)
-    await make_task(scene.team, assignee=scene.assignee, score=None)  # не учитывается
-    await make_task(scene.team, assignee=scene.member, score=1)  # чужая
+    await make_task(scene.team, assignee=scene.assignee, score=4, status=TaskStatus.DONE, manager_comment="good")
+    await make_task(scene.team, assignee=scene.assignee, score=5, status=TaskStatus.DONE, manager_comment="great")
+    await make_task(scene.team, assignee=scene.assignee, score=None, status=TaskStatus.OPEN, manager_comment=None)  # не учитывается
+    await make_task(scene.team, assignee=scene.member, score=1, status=TaskStatus.DONE, manager_comment="other")  # чужая
 
     result = await repository.get_mean_task_score_for_user(scene.assignee.id)
 
@@ -208,7 +208,7 @@ async def test_get_mean_task_score_for_user_without_tasks(repository, scene):
 # --- get_user_tasks_in_time -------------------------------------------------
 # Окно запроса: дни 1 - 3 от 2030-01-01, границы включительно.
 
-async def test_get_user_tasks_in_time(repository, scene, make_task, day, detach):
+async def test_get_user_tasks_in_time(repository, scene, make_task, day_dt, detach):
     at_start = await make_task(scene.team, assignee=scene.assignee, due_d=1)
     inside = await make_task(scene.team, assignee=scene.assignee, due_d=2)
     at_end = await make_task(scene.team, assignee=scene.assignee, due_d=3)
@@ -221,8 +221,8 @@ async def test_get_user_tasks_in_time(repository, scene, make_task, day, detach)
     await detach()
 
     tasks = await repository.get_user_tasks_in_time(
-        day(1),
-        day(3),
+        day_dt(1),
+        day_dt(3),
         user_id,
     )
 

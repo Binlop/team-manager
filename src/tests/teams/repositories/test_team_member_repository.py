@@ -120,7 +120,8 @@ async def test_add_team_member(repository, make_team, make_user, roles):
     user = await make_user()
 
     member = await repository.add_team_member(
-        TeamMemberCreate(user_id=user.id, team_id=team.id, role=roles.MEMBER)
+        TeamMemberCreate(user_id=user.id, team_id=team.id, role=roles.MEMBER),
+        team.id,
     )
 
     assert isinstance(member, TeamMember)
@@ -137,7 +138,8 @@ async def test_add_team_member_uses_member_role_by_default(
     user = await make_user()
 
     member = await repository.add_team_member(
-        TeamMemberCreate(user_id=user.id, team_id=team.id)
+        TeamMemberCreate(user_id=user.id, team_id=team.id),
+        team.id,
     )
 
     assert member.role == roles.MEMBER
@@ -189,7 +191,8 @@ async def test_update_member_role(repository, make_team, make_user, make_member,
     member = await make_member(user, team, role=roles.MEMBER)
 
     updated = await repository.update_member_role(
-        TeamMemberUpdate(id=member.id, team_id=team.id, role=roles.MANAGER)
+        TeamMemberUpdate(id=member.id, team_id=team.id, role=roles.MANAGER),
+        team.id,
     )
 
     assert updated is not None
@@ -207,7 +210,8 @@ async def test_update_member_role_updates_only_target_member(
     other = await make_member(other_user, team, role=roles.MEMBER)
 
     updated = await repository.update_member_role(
-        TeamMemberUpdate(id=target.id, team_id=team.id, role=roles.ADMIN)
+        TeamMemberUpdate(id=target.id, team_id=team.id, role=roles.ADMIN),
+        team.id,
     )
     other_after = await repository.get_member_by_id(other.id)
 
@@ -220,7 +224,8 @@ async def test_update_member_role_updates_only_target_member(
 
 async def test_update_member_role_not_found(repository, roles):
     result = await repository.update_member_role(
-        TeamMemberUpdate(id=MISSING_ID, team_id=MISSING_TEAM_ID, role=roles.MANAGER)
+        TeamMemberUpdate(id=MISSING_ID, team_id=MISSING_TEAM_ID, role=roles.MANAGER),
+        MISSING_TEAM_ID,
     )
 
     assert result is None

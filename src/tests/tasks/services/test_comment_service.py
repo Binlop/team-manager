@@ -178,6 +178,7 @@ async def test_get_comments_by_task_id(
 ):
     comments = [comment]
 
+    service.task_repo.get_task_by_id.return_value = SimpleNamespace(id=comment.task_id)
     service.comment_repo.get_comments_by_task_id.return_value = comments
 
     result = await service.service.get_comments_by_task_id(
@@ -187,6 +188,10 @@ async def test_get_comments_by_task_id(
 
     assert result == comments
 
+    service.task_repo.get_task_by_id.assert_awaited_once_with(
+        comment.task_id,
+        user.id,
+    )
     service.comment_repo.get_comments_by_task_id.assert_awaited_once_with(
         comment.task_id,
         user.id,
@@ -330,6 +335,7 @@ async def test_delete_comment_success(
     user,
     comment,
 ):
+    service.comment_repo.get_comment_by_id.return_value = comment
     service.comment_repo.delete_comment.return_value = True
 
     result = await service.service.delete_comment(
@@ -339,6 +345,10 @@ async def test_delete_comment_success(
 
     assert result is None
 
+    service.comment_repo.get_comment_by_id.assert_awaited_once_with(
+        comment.id,
+        user.id,
+    )
     service.comment_repo.delete_comment.assert_awaited_once_with(
         comment.id,
         user.id,
@@ -350,9 +360,10 @@ async def test_delete_comment_failed(
     user,
     comment,
 ):
+    service.comment_repo.get_comment_by_id.return_value = comment
     service.comment_repo.delete_comment.return_value = False
 
-    with pytest.raises(PermissionDeniedError):
+    with pytest.raises(CommentNotFoundError):
         await service.service.delete_comment(
             comment.id,
             user,
@@ -364,18 +375,11 @@ async def test_delete_comment_failed(
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Недочёт: delete_comment возвращает PermissionDeniedError и для "
-        "несуществующего комментария, потому что репозиторий не различает "
-        "«не найден» и «не автор» (rowcount == 0)."
-    ),
-    strict=False,
-)
 async def test_delete_comment_not_found_raises_not_found(
     service,
     user,
 ):
+    service.comment_repo.get_comment_by_id.return_value = None
     service.comment_repo.delete_comment.return_value = False
 
     with pytest.raises(CommentNotFoundError):

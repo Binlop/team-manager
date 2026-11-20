@@ -2,7 +2,7 @@ from core.exceptions import PermissionDeniedError
 from tasks.repositories import TaskRepository, CommentRepository
 from tasks.schemas import TaskCreate, TaskUpdate, CommentCreate, CommentUpdate
 from tasks.models import Task, Comment, TaskStatus
-from tasks.exceptions import AssigneeNotInTeamError, TaskNotFoundError, CommentNotFoundError, ScoreStatusMismatchError, InvalidStatusTransitionError
+from tasks.exceptions import AssigneeNotInTeamError, TaskNotFoundError, CommentNotFoundError, ScoreStatusMismatchError, InvalidStatusTransitionError, InvalidStatusError
 from auth.models import User
 from teams.repositories import TeamRepository, TeamMemberRepository
 from teams.exceptions import TeamNotFoundError
@@ -58,7 +58,12 @@ class TaskService:
         if data.assignee_id is not None:
             if not await self.team_member_repo.check_member_exists_with_user_id_and_team_id(data.assignee_id, data.team_id):
                 raise AssigneeNotInTeamError(data.assignee_id, data.team_id)
-            
+
+        has_score = data.score is not None
+        is_done = data.status == TaskStatus.DONE
+        if has_score != is_done or (is_done and data.manager_comment is None):
+            raise ScoreStatusMismatchError(data.score, data.status.value)
+
         created = await self.task_repo.create_task(data=data)
         task = await self.task_repo.get_task_by_id(created.id, user.id)
         if task is None:
@@ -81,7 +86,12 @@ class TaskService:
         is_done = data.status == TaskStatus.DONE
         if has_score != is_done:
             raise ScoreStatusMismatchError(data.score, data.status.value)
-        
+
+        current_status = task.status if isinstance(task.status, TaskStatus) else TaskStatus(task.status)
+        target_status = TaskStatus(data.status)
+        if target_status != current_status:
+            self.validate_status_transition(current_status, target_status)
+
         payload = data.model_dump(exclude_unset=True, exclude={"id", "team_id"})
         updated = await self.task_repo.update_task({"id": data.id, **payload})
         if updated is None:
@@ -106,9 +116,15 @@ class TaskService:
     def is_status_transition_allowed(self, current: TaskStatus, target: TaskStatus) -> bool:
         return target in self.ALLOWED_TRANSITIONS[current]
 
-    def validate_status_transition(self, current: TaskStatus, target: TaskStatus) -> None:
-        if not self.is_status_transition_allowed(current, target):
-            raise InvalidStatusTransitionError(current.value, target.value)
+    def validate_status_transition(self, current: TaskStatus | str, target: TaskStatus) -> None:
+        try:
+            current_status = TaskStatus(current)
+            target_status = TaskStatus(target)
+        except (ValueError, TypeError) as e:
+            raise InvalidStatusError(str(e)) from None
+
+        if target_status not in self.ALLOWED_TRANSITIONS[current_status]:
+            raise InvalidStatusTransitionError(current_status, target_status)
 
 class CommentService:
 

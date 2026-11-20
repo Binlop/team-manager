@@ -57,24 +57,24 @@ async def test_add_member(
     team_member_repo.add_team_member.return_value = member
     team_member_repo.get_member_by_id.return_value = member
 
-    result = await service.add_member(add_data, manager)
+    result = await service.add_member(team.id, add_data, manager)
 
     assert result is member
     team_repo.get_team_for_user.assert_awaited_once_with(team.id, manager.id)
     team_member_repo.check_member_exists_with_user_id_and_team_id.assert_awaited_once_with(
         USER_ID, team.id
     )
-    team_member_repo.add_team_member.assert_awaited_once_with(add_data)
+    team_member_repo.add_team_member.assert_awaited_once_with(add_data, team.id)
     team_member_repo.get_member_by_id.assert_awaited_once_with(member_id=member.id)
 
 
 async def test_add_member_team_not_found(
-    service, team_repo, team_member_repo, add_data, manager
+    service, team_repo, team_member_repo, add_data, manager, team
 ):
     team_repo.get_team_for_user.return_value = None
 
     with pytest.raises(TeamNotFoundError):
-        await service.add_member(add_data, manager)
+        await service.add_member(team.id, add_data, manager)
 
     team_member_repo.add_team_member.assert_not_awaited()
 
@@ -85,7 +85,7 @@ async def test_add_member_by_non_manager(
     team_repo.get_team_for_user.return_value = team
 
     with pytest.raises(PermissionDeniedError):
-        await service.add_member(add_data, stranger)
+        await service.add_member(team.id, add_data, stranger)
 
     team_member_repo.add_team_member.assert_not_awaited()
 
@@ -97,7 +97,7 @@ async def test_add_member_already_exists(
     team_member_repo.check_member_exists_with_user_id_and_team_id.return_value = True
 
     with pytest.raises(TeamMemberAlreadyExistsError):
-        await service.add_member(add_data, manager)
+        await service.add_member(team.id, add_data, manager)
 
     team_member_repo.add_team_member.assert_not_awaited()
 
@@ -111,7 +111,7 @@ async def test_add_member_not_found_after_creation(
     team_member_repo.get_member_by_id.return_value = None
 
     with pytest.raises(TeamMemberNotFoundError):
-        await service.add_member(add_data, manager)
+        await service.add_member(team.id, add_data, manager)
 
 
 # --- add_member_by_invite_code ----------------------------------------------
@@ -135,7 +135,8 @@ async def test_add_member_by_invite_code(
         user.id, team.id
     )
     team_member_repo.add_team_member.assert_awaited_once_with(
-        TeamMemberCreate(user_id=user.id, team_id=team.id)
+        TeamMemberCreate(user_id=user.id, team_id=team.id),
+        team.id,
     )
     team_member_repo.get_member_by_id.assert_awaited_once_with(member_id=member.id)
 
@@ -185,7 +186,7 @@ async def test_update_member_role_team_not_found(
     team_repo.get_team_for_user.return_value = None
 
     with pytest.raises(TeamNotFoundError):
-        await service.update_member_role(data, manager)
+        await service.update_member_role(team.id, data, manager)
 
     team_member_repo.update_member_role.assert_not_awaited()
 
@@ -197,7 +198,7 @@ async def test_update_member_role_by_non_manager(
     team_repo.get_team_for_user.return_value = team
 
     with pytest.raises(PermissionDeniedError):
-        await service.update_member_role(data, stranger)
+        await service.update_member_role(team.id, data, stranger)
 
     team_member_repo.update_member_role.assert_not_awaited()
 
@@ -210,7 +211,7 @@ async def test_update_member_role_member_not_found(
     team_member_repo.update_member_role.return_value = None
 
     with pytest.raises(TeamMemberNotFoundError):
-        await service.update_member_role(data, manager)
+        await service.update_member_role(team.id, data, manager)
 
 
 async def test_update_member_role_to_member(
@@ -221,12 +222,14 @@ async def test_update_member_role_to_member(
     team_member_repo.update_member_role.return_value = member
     team_member_repo.get_member_by_id.return_value = member
 
-    result = await service.update_member_role(data, manager)
+    result = await service.update_member_role(team.id, data, manager)
 
     assert result is member
-    team_member_repo.update_member_role.assert_awaited_once_with(member=data)
+    team_member_repo.update_member_role.assert_awaited_once_with(member=data, team_id=team.id)
     # Прежнего менеджера не трогаем.
-    team_member_repo.get_member_by_team_and_user_id.assert_not_awaited()
+    team_member_repo.get_member_by_team_and_user_id.assert_awaited_once_with(
+        team_id=team.id, user_id=manager.id
+    )
     team_repo.update_team_manager.assert_not_awaited()
     team_member_repo.get_member_by_id.assert_awaited_once_with(member.id)
 
@@ -243,7 +246,7 @@ async def test_update_member_role_member_from_other_team(
     team_member_repo.get_member_by_id.return_value = other_team_member
 
     with pytest.raises(TeamMemberNotFoundError):
-        await service.update_member_role(data, manager)
+        await service.update_member_role(team.id, data, manager)
 
 
 async def test_update_member_role_cannot_demote_manager(
@@ -259,11 +262,16 @@ async def test_update_member_role_cannot_demote_manager(
         role=TeamRole.MEMBER,
     )
     team_repo.get_team_for_user.return_value = team
+    team_member_repo.get_member_by_team_and_user_id.return_value = SimpleNamespace(
+        id=MANAGER_MEMBER_ID, user_id=manager.id, team_id=team.id, role=TeamRole.MEMBER
+    )
     team_member_repo.update_member_role.return_value = demoted_self
+    team_member_repo.get_member_by_id.return_value = demoted_self
 
     with pytest.raises(CannotDemoteManagerError):
-        await service.update_member_role(data, manager)
+        await service.update_member_role(team.id, data, manager)
 
+    team_member_repo.update_member_role.assert_not_awaited()
     team_member_repo.get_member_by_id.assert_not_awaited()
 
 
@@ -280,21 +288,21 @@ async def test_update_member_role_to_manager_demotes_previous_manager(
     )
     team_repo.get_team_for_user.return_value = team
     team_member_repo.update_member_role.return_value = promoted
-    team_member_repo.get_member_by_team_and_user_id.return_value = previous_manager
+    team_member_repo.get_member_by_team_and_user_id.return_value = SimpleNamespace(
+        id=MANAGER_MEMBER_ID, user_id=manager.id, team_id=team.id, role=TeamRole.MANAGER
+    )
     team_member_repo.get_member_by_id.return_value = fresh
 
-    result = await service.update_member_role(data, manager)
+    result = await service.update_member_role(team.id, data, manager)
 
     assert result is fresh
-    team_member_repo.get_member_by_team_and_user_id.assert_awaited_once_with(
-        team_id=team.id, user_id=manager.id
-    )
+    team_member_repo.get_member_by_team_and_user_id.assert_awaited()
+    assert team_member_repo.get_member_by_team_and_user_id.await_count == 2
     assert team_member_repo.update_member_role.await_count == 2
-    team_member_repo.update_member_role.assert_any_await(member=data)
+    team_member_repo.update_member_role.assert_any_await(member=data, team_id=team.id)
     team_member_repo.update_member_role.assert_any_await(
-        member=TeamMemberUpdate(
-            id=previous_manager.id, team_id=team.id, role=TeamRole.MEMBER
-        )
+        member=TeamMemberUpdate(id=previous_manager.id, role=TeamRole.MEMBER),
+        team_id=team.id,
     )
     team_repo.update_team_manager.assert_awaited_once_with(
         team_id=team.id, manager_id=user.id
@@ -310,10 +318,15 @@ async def test_update_member_role_to_manager_previous_manager_not_found(
     )
     team_repo.get_team_for_user.return_value = team
     team_member_repo.update_member_role.return_value = promoted
-    team_member_repo.get_member_by_team_and_user_id.return_value = None
+    team_member_repo.get_member_by_team_and_user_id.side_effect = [
+        SimpleNamespace(
+            id=MANAGER_MEMBER_ID, user_id=manager.id, team_id=team.id, role=TeamRole.MANAGER
+        ),
+        None,  # previous manager not found
+    ]
 
     with pytest.raises(TeamMemberNotFoundError):
-        await service.update_member_role(data, manager)
+        await service.update_member_role(team.id, data, manager)
 
     team_repo.update_team_manager.assert_not_awaited()
 
@@ -334,11 +347,13 @@ async def test_update_member_role_manager_assigning_self_is_not_demoted(
     team_member_repo.update_member_role.return_value = manager_member
     team_member_repo.get_member_by_id.return_value = manager_member
 
-    result = await service.update_member_role(data, manager)
+    result = await service.update_member_role(team.id, data, manager)
 
     assert result is manager_member
-    team_member_repo.update_member_role.assert_awaited_once_with(member=data)
-    team_member_repo.get_member_by_team_and_user_id.assert_not_awaited()
+    team_member_repo.update_member_role.assert_awaited_once_with(member=data, team_id=team.id)
+    team_member_repo.get_member_by_team_and_user_id.assert_awaited_once_with(
+        team_id=team.id, user_id=manager.id
+    )
     team_repo.update_team_manager.assert_not_awaited()
 
 

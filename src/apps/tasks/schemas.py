@@ -29,6 +29,21 @@ class TaskRead(TaskReadBrief):
 class TaskCreate(TaskBase):
     assignee_id: int | None
     team_id: int
+    manager_comment: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_score_status_consistency(self) -> Self:
+        if self.status == TaskStatus.DONE:
+            if self.score is None or self.manager_comment is None:
+                raise ValueError(
+                    "score and manager_comment are required when status is DONE"
+                )
+        if self.score is not None and self.status != TaskStatus.DONE:
+            raise ValueError(
+                f"score ({self.score}) can only be set when status is DONE, "
+                f"not {self.status.value}"
+            )
+        return self
 
 class TaskUpdate(TaskBase):
     id: int

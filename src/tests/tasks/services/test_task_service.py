@@ -73,6 +73,7 @@ def task(team, member):
         team_id=team.id,
         team=team,
         assignee_id=member.id,
+        status=TaskStatus.OPEN,
     )
 
 
@@ -123,13 +124,15 @@ async def test_get_task_not_found(service, task_repo, user):
 # --- get_team_tasks ---------------------------------------------------------
 
 
-async def test_get_team_tasks(service, task_repo, user, task):
+async def test_get_team_tasks(service, task_repo, team_repo, user, task):
     tasks = [task]
+    team_repo.get_team_for_user.return_value = task.team
     task_repo.get_tasks_by_team_id.return_value = tasks
 
     result = await service.get_team_tasks(10, user)
 
     assert result == tasks
+    team_repo.get_team_for_user.assert_awaited_once_with(10, user.id)
     task_repo.get_tasks_by_team_id.assert_awaited_once_with(10, user.id)
 
 
@@ -361,13 +364,6 @@ async def test_update_task_ignores_team_id_in_payload(
     assert called_payload["id"] == task.id
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг: update_task не проверяет, что новый assignee_id является "
-        "участником команды (в отличие от create_task)."
-    ),
-    strict=False,
-)
 async def test_update_task_validates_assignee_membership(
     service, task_repo, team_member_repo, user, task, update_task_data
 ):
@@ -379,17 +375,10 @@ async def test_update_task_validates_assignee_membership(
         await service.update_task(update_task_data, user)
 
     team_member_repo.check_member_exists_with_user_id_and_team_id.assert_awaited_once_with(
-        update_task_data.assignee_id, update_task_data.team_id
+        update_task_data.assignee_id, task.team_id
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг: в TaskUpdate нет поля manager_comment, хотя БД требует его "
-        "для статуса DONE; завершить задачу через сервис невозможно."
-    ),
-    strict=False,
-)
 async def test_update_task_to_done_can_set_manager_comment(
     service, task_repo, user, task
 ):
@@ -401,15 +390,16 @@ async def test_update_task_to_done_can_set_manager_comment(
         status=TaskStatus.DONE,
         score=5,
         assignee_id=2,
-        team_id=task.team_id,
+        manager_comment="All good",
     )
+    task.status = TaskStatus.REVIEW
     task_repo.get_task_by_id.side_effect = [task, task]
     task_repo.update_task.return_value = SimpleNamespace(id=task.id)
 
     await service.update_task(data, user)
 
     called_payload = task_repo.update_task.await_args.args[0]
-    assert called_payload["manager_comment"] is not None
+    assert called_payload["manager_comment"] == "All good"
 
 
 # --- delete_task ------------------------------------------------------------
@@ -435,13 +425,6 @@ async def test_delete_task_by_stranger(service, task_repo, stranger, task):
 
 @pytest.mark.parametrize("role", ["assignee", "manager"])
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
-@pytest.mark.xfail(
-    reason=(
-        "Баг: TaskService.delete_task не делает await для "
-        "task_repo.delete_task(...), поэтому задача фактически не удаляется."
-    ),
-    strict=False,
-)
 async def test_delete_task_awaits_repository(
     service, task_repo, user, member, task, role
 ):
@@ -455,13 +438,6 @@ async def test_delete_task_awaits_repository(
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
-@pytest.mark.xfail(
-    reason=(
-        "Баг: из-за отсутствующего await результат delete_task не проверяется, "
-        "поэтому TaskNotFoundError не выбрасывается."
-    ),
-    strict=False,
-)
 async def test_delete_task_raises_if_repository_deleted_nothing(
     service, task_repo, user, task
 ):

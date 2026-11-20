@@ -118,6 +118,7 @@ def make_task(session, day):
         due_d: int | None = None,
         score: int | None = None,
         status=None,
+        manager_comment: str | None = None,
     ) -> Task:
         extra = {} if status is None else {"status": status}
         task = Task(
@@ -127,6 +128,7 @@ def make_task(session, day):
             assignee_id=None if assignee is None else assignee.id,
             team_id=team.id,
             score=score,
+            manager_comment=manager_comment,
             **extra,
         )
         session.add(task)

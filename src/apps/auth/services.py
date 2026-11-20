@@ -42,6 +42,9 @@ class UserService:
             user = await self.user_repository.get_by_username(cmd.identifier)
         if not user:
             raise InvalidCredentialsError()
+
+        if not user.is_active:
+            raise InvalidCredentialsError()
         
         is_valid = await asyncio.to_thread(
             self.verify_password,
@@ -90,6 +93,7 @@ class TokenService:
 
     def __init__(self, uow: UnitOfWork):
         self.token_repository = TokenRepository(uow)
+        self.uow = uow
 
     async def update_refresh_token(self, data: RefreshTokenRequest) -> TokenResponse:
         payload = verify_token(data.refresh_token, expected_type='refresh') 
@@ -100,9 +104,17 @@ class TokenService:
         user_id = int(payload["sub"])
 
         token = await self.token_repository.get_token_by_jti(jti=jti)
-        if not token or token.revoked or token.expires_at < datetime.now(timezone.utc):
+
+        if not token:
+            raise InvalidTokenError()
+
+        expires_at = token.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if token.revoked or expires_at < datetime.now(timezone.utc):
             if token and token.revoked:
                 await self.token_repository.revoke_all_for_user(user_id=user_id)
+                await self.uow.commit()
             raise InvalidTokenError()
 
         await self.token_repository.revoke_token_by_jti(jti=jti)

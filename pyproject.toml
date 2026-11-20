@@ -17,6 +17,12 @@ dependencies = [
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.8",
     "structlog>=26.1.0",
+    "testcontainers[postgres]>=4.15.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.pyright]
@@ -24,3 +30,12 @@ extraPaths = ["src", "src/apps"]
 
 [tool.mypy]
 mypy_path = "src:src/apps"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+pythonpath = ["src", "src/apps"]
+
+[tool.coverage.run]
+source = ["src"]
